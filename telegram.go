@@ -12,24 +12,23 @@ import (
 // TelegramService handles sending messages to a Telegram bot.
 type TelegramService struct {
 	apiKey string
-	chatID string
 }
 
 // NewTelegramService creates a new TelegramService.
-func NewTelegramService(apiKey, chatID string) *TelegramService {
+func NewTelegramService(apiKey string) *TelegramService {
 	return &TelegramService{
 		apiKey: apiKey,
-		chatID: chatID,
 	}
 }
 
-// SendMessage sends a message to the configured Telegram chat.
-func (s *TelegramService) SendMessage(message string) error {
+// SendMessage sends a message to the specified Telegram chat.
+func (s *TelegramService) SendMessage(chatID, message string) error {
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", s.apiKey)
 
 	requestBody, err := json.Marshal(map[string]string{
-		"chat_id": s.chatID,
-		"text":    message,
+		"chat_id":    chatID,
+		"text":       message,
+		"parse_mode": "Markdown",
 	})
 	if err != nil {
 		return fmt.Errorf("failed to marshal request: %w", err)
