@@ -105,8 +105,14 @@ func processNewsSource(
 			if err != nil {
 				log.Printf("Failed to send message to Telegram channel %s: %v", channelID, err)
 			} else {
-				// Send a confirmation to the admin chat
-				notification := fmt.Sprintf("Posted to %s", channelID)
+				// Send a confirmation to the admin chat with post text
+				// Truncate the analysis to avoid exceeding Telegram's message size limit
+				maxLength := 4000 // Telegram's message limit is around 4096 characters
+				analysisPreview := sanitizedAnalysis
+				if len(analysisPreview) > maxLength {
+					analysisPreview = analysisPreview[:maxLength-3] + "..."
+				}
+				notification := fmt.Sprintf("Posted to %s: %s", channelID, analysisPreview)
 				telegramService.SendMessage(config.TelegramChatID, notification)
 			}
 		}
