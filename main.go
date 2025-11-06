@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"news/fetcher"
@@ -95,9 +96,11 @@ func processNewsSource(
 
 	if analysis != "" {
 		fmt.Println(analysis)
+		// Escape triple asterisks to prevent Telegram Markdown parsing errors
+		sanitizedAnalysis := strings.ReplaceAll(analysis, "***", "\\*\\*\\*")
 		for _, channelID := range targetChannelIDs {
 			// Add the channel ID to the message for context
-			message := fmt.Sprintf("%s\n\n*%s*", analysis, channelID)
+			message := fmt.Sprintf("%s\n\n*%s*", sanitizedAnalysis, channelID)
 			err = telegramService.SendMessage(channelID, message)
 			if err != nil {
 				log.Printf("Failed to send message to Telegram channel %s: %v", channelID, err)
@@ -116,6 +119,7 @@ func processNewsSource(
 func main() {
 	config := LoadConfig()
 	geminiService := NewGeminiService(config.GeminiAPIKey)
+	defer geminiService.Close()
 	telegramService := NewTelegramService(config.TelegramAPIKey)
 
 	// Process SVTV
@@ -137,6 +141,6 @@ func main() {
 		telegramService,
 		config,
 		"Meduza",
-		[]string{config.MeduzaChannelID, config.SvtvChannelID},
+		[]string{config.MeduzaChannelID},
 	)
 }

@@ -3,6 +3,7 @@ package fetcher
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"regexp"
 	"strings"
 	"time"
@@ -30,6 +31,13 @@ func cleanHTML(rawHTML string) string {
 	return cleantext
 }
 
+// newFeedParser creates a new gofeed.Parser with a custom User-Agent.
+func newFeedParser() *gofeed.Parser {
+	fp := gofeed.NewParser()
+	fp.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
+	return fp
+}
+
 // GenericFetcher is a fetcher for standard RSS feeds.
 type GenericFetcher struct {
 	URL string
@@ -37,10 +45,33 @@ type GenericFetcher struct {
 
 // Fetch fetches news from the feed.
 func (f *GenericFetcher) Fetch(since time.Time) ([]NewsItem, error) {
-	fp := gofeed.NewParser()
-	feed, err := fp.ParseURL(f.URL)
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+	req, err := http.NewRequest("GET", f.URL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set browser-like headers to avoid being blocked.
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching or parsing feed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch feed, status code: %d", resp.StatusCode)
+	}
+
+	fp := gofeed.NewParser()
+	feed, err := fp.Parse(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing feed: %w", err)
 	}
 
 	fmt.Printf("Fetching news from: %s\n", feed.Title)
@@ -96,7 +127,7 @@ func parseRussianDate(dateStr string) (*time.Time, error) {
 
 // Fetch fetches news from the svtv.org feed, handling its custom date format.
 func (f *SvtvFetcher) Fetch(since time.Time) ([]NewsItem, error) {
-	fp := gofeed.NewParser()
+	fp := newFeedParser()
 	feed, err := fp.ParseURL(f.URL)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching or parsing feed: %w", err)

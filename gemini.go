@@ -8,13 +8,13 @@ import (
 
 	"news/fetcher"
 
+	"github.com/google/generative-ai-go/genai"
 	"google.golang.org/api/option"
-	"google.golang.org/genai"
 )
 
 // GeminiService is a service for interacting with the Gemini API.
 type GeminiService struct {
-	client *genai.GenerativeModel
+	genaiClient *genai.Client
 }
 
 // NewGeminiService creates a new GeminiService.
@@ -24,9 +24,7 @@ func NewGeminiService(apiKey string) *GeminiService {
 	if err != nil {
 		log.Fatalf("failed to create genai client: %v", err)
 	}
-	// For text-only input, use the gemini-1.5-flash model
-	model := client.GenerativeModel("gemini-1.5-flash")
-	return &GeminiService{client: model}
+	return &GeminiService{genaiClient: client}
 }
 
 // AnalyzeNews analyzes news articles using the Gemini API.
@@ -36,38 +34,30 @@ func (s *GeminiService) AnalyzeNews(items []fetcher.NewsItem) (string, error) {
 		newsContent += fmt.Sprintf("Title: %s\nContent: %s\n\n", item.Title, item.Content)
 	}
 
-	prompt := fmt.Sprintf(`You are an expert global news analyst and editorial curator.
+	prompt := fmt.Sprintf(`Вы являетесь экспертом по глобальным новостям и редактором. Ваша цель — определить **самое глобально значимое** событие. Оцените следующие статьи по **долгосрочному глобальному значению** по шкале от 1 до 10:
 
-Your goal is to identify only the *most globally consequential* news event.
+* 10 = событие, которое, вероятно, будет помнить во всем мире в течение многих лет (например, начало крупной войны, убийство мирового лидера, исторический климатический рубеж, глобальный финансовый крах).
+* 9 = глобально значимое событие с крупными экономическими, политическими или научными последствиями.
+* 8 или ниже = событие, важное регионально или краткосрочно.
 
-Evaluate the following articles for **long-term global significance** on a 1–10 scale:
+Выберите **не более одной** статьи с рейтингом 10/10. Если ни одна статья не заслуживает 10, **ничего не выводите** (верните пустую строку). Если есть сомнения в её уникальной мировой значимости, **не выбирайте ничего** (верните ""). 
 
-- 10 = an event that will likely be remembered globally for years (e.g., major war outbreak, world leader assassination, historic climate milestone, global financial collapse).
-- 9 = a globally influential development with major economic, political, or scientific consequences.
-- 8 or below = regionally important or short-term impactful events.
+Если статья подходит, то выведите краткое резюме в формате MarkdownV2 (ВАЖНО!): 
 
-Choose **at most one** article rated 10/10.  
-If none truly deserve 10, output nothing.
+* Начните с *жирного заголовка*.
+* Краткое содержание новости с самыми важными
 
-Before finalizing, compare your chosen article against others — if there’s any doubt that it’s uniquely world-shaping, **do not select any**.
+Разделяйте смысловые блоки двойным переносом строки. Не пиши слишком длинные и сложные предложения. Длина новости должна быть не больше чем 6 предложений! 
 
-If one qualifies, output a concise 3–5 sentence summary in Markdown:
-- Start with a **bold headline**.
-- What happened.
-- Why it matters globally.
-- What might follow.
+Вывод должен быть только переписанным текстом, без объяснений, оценок или ссылок.
 
-Separate meaning blocks with two line breaks.  
-Be factual, neutral, and restrained — avoid hype or speculation.  
-Output only the rewritten text. No explanations, no scores, no lists, no links.
+Входные новости: %s`, newsContent)
 
-Input news articles:
-%s`, newsContent)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	model := s.genaiClient.GenerativeModel("gemini-2.5-pro")
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	resp, err := s.client.GenerateContent(ctx, genai.Text(prompt))
+	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 	if err != nil {
 		return "", fmt.Errorf("failed to generate content: %w", err)
 	}
@@ -81,4 +71,9 @@ Input news articles:
 	}
 
 	return "", nil
+}
+
+// Close closes the Gemini client.
+func (s *GeminiService) Close() {
+	s.genaiClient.Close()
 }
