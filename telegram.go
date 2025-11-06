@@ -28,7 +28,7 @@ func (s *TelegramService) SendMessage(chatID, message string) error {
 	requestBody, err := json.Marshal(map[string]string{
 		"chat_id":    chatID,
 		"text":       message,
-		"parse_mode": "Markdown",
+		"parse_mode": "MarkdownV2",
 	})
 	if err != nil {
 		return fmt.Errorf("failed to marshal request: %w", err)

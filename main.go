@@ -94,7 +94,7 @@ func processNewsSource(
 		return
 	}
 
-	if analysis != "" {
+	if analysis != "" && len(analysis) >= 34 {
 		fmt.Println(analysis)
 		// Escape triple asterisks to prevent Telegram Markdown parsing errors
 		sanitizedAnalysis := strings.ReplaceAll(analysis, "***", "\\*\\*\\*")
