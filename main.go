@@ -73,6 +73,16 @@ func processNewsSource(
 ) {
 	fmt.Printf("\n--- Fetching from %s ---\n", sourceName)
 	items, err := fetcher.Fetch(time.Now().AddDate(0, 0, -1))
+
+	// Export first 100 symbols of extracted RSS content
+	if len(items) > 0 && items[0].Content != "" {
+		contentPreview := items[0].Content
+		if len(contentPreview) > 1000 {
+			contentPreview = contentPreview[:1000]
+		}
+		fmt.Printf("RSS Content Preview: %s\n", contentPreview)
+	}
+
 	if err != nil {
 		errorMsg := fmt.Sprintf("Error fetching from %s: %v", sourceName, err)
 		log.Print(errorMsg)
