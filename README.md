@@ -1,59 +1,140 @@
-# Concept NoNoise
+# NoNoise News Fetcher
 
-NoNoise is a post-news publication that does not kill attention. It is radically different from traditional media outlets: it remains silent most of the time and speaks only when it is truly important. Its mission is to relieve readers of information iatrogenesis—the harm caused by an excessive amount of “news” that carries no signal, only noise.
+NoNoise is a Go-based intelligent news aggregation application that implements the "NoNoise" philosophy: it remains silent most of the time and speaks only when truly important news is detected. The application uses AI-powered analysis to filter signal from noise, delivering only the most significant news stories.
 
-## Formats
+Program takes news from RSS, take the most important ones, and post it to a telegram channel.
 
-*   **NoNoise10** — 10 news stories per year. Each publication is an event of tectonic significance: war, technological breakthrough, scientific discovery, change in the structure of the world.
-*   **NoNoise50** — 50 articles per year. A more responsive format: key signals in economics, science, ecology, and technology — without haste or panic.
 
-## Editorial philosophy
+## Architecture
 
-*   **Via negativa** — the main thing is not to add, but to remove. We filter out everything that has no long-term significance.
-*   **Barbell strategy** — 95% of the time is “conservative silence,” 5% is publications of extreme usefulness.
+```
+Configuration (.env)
+       ↓
+   config.go (loads settings)
+       ↓
+   main.go (orchestrates workflow)
+       ↓
+   fetcher/ (news retrieval)
+       ↓
+   gemini.go (AI analysis)
+       ↓
+ telegram.go (notifications)
+       ↓
+   Console & Telegram Channels
+```
 
-## Why it matters
+## Project Structure
 
-Information noise is toxic. Modern media creates neurosis: an endless stream of “events” makes people anxious and stupid.
+- **`main.go`**: Application entry point and workflow orchestration
+- **`config.go`**: Configuration loading and management
+- **`fetcher/`**: Modular news fetching system
+  - **`fetcher.go`**: Fetcher interface and implementations
+  - **`GenericFetcher`**: Standard RSS/Atom feed parser
+  - **`SvtvFetcher`**: Custom parser for non-standard feed formats
+- **`gemini.go`**: Google Gemini AI integration for news analysis
+- **`telegram.go`**: Telegram bot API integration
+- **`logger.go`**: Structured logging system
+- **`constants.go`**: Application constants and configuration defaults
 
-Frequency kills understanding. When a person follows events 24/7, 99.5% of the signals are noise.
+## Current Implementation Status
 
-We bring back real time. The reader gets space to think and make decisions, rather than an endless panorama of anxiety.
+The NoNoise application is **currently functional and ready to run**, implementing a simplified but effective version of the NoNoise philosophy.
+
+## Technology Stack
+
+- **Core**: Go 1.22.5
+- **AI Integration**: HTTP-based Gemini API (no external SDK)
+- **RSS Processing**: github.com/mmcdole/gofeed v1.3.0
+- **Configuration**: github.com/joho/godotenv v1.5.1
+- **HTTP Client**: Standard Go net/http package
 
 ## Getting Started
 
 ### Prerequisites
 
 - Go 1.22.5 or higher
-- A Gemini API key
-- A Telegram Bot API key and Chat ID
+- Google Gemini API key
+- Telegram Bot API key and Chat ID
 
 ### Installation
 
-1.  **Clone the repository:**
-    ```
-    git clone https://github.com/your-username/news.git
-    cd news
-    ```
+1. **Clone the repository:**
+   ```bash
+   git clone <repository-url>
+   cd nonoise
+   ```
 
-2.  **Create a `.env` file:**
-    Create a `.env` file in the root of the project and add your API keys and chat ID:
-    ```
-    GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
-    TELEGRAM_API_KEY="YOUR_TELEGRAM_API_KEY"
-    TELEGRAM_CHAT_ID="YOUR_TELEGRAM_CHAT_ID"
-    ```
+2. **Create configuration file:**
+   ```bash
+   cp .env.example .env
+   ```
 
-3.  **Install dependencies:**
-    ```
-    go mod tidy
-    ```
+3. **Configure your environment variables:**
+   Edit the `.env` file with your actual API keys and settings:
+   ```env
+   # Required: Google Gemini API Key
+   GEMINI_API_KEY=your_gemini_api_key_here
+
+   # Required: Telegram Bot API Key
+   TELEGRAM_API_KEY=your_telegram_bot_api_key_here
+
+   # Required: Telegram Chat ID for admin notifications
+   TELEGRAM_CHAT_ID=your_telegram_chat_id_here
+
+   # Required: News Sources Configuration
+   NEWS_SOURCES=SVTV:https://svtv.org/feed/rss/,Meduza:https://meduza.io/rss/all
+   ```
+
+4. **Install dependencies:**
+   ```bash
+   go mod tidy
+   ```
 
 ### Running the Application
 
-To run the application, execute the following command:
-```
+#### Development Mode
+```bash
 go run .
 ```
 
-The application will fetch news from the specified RSS feeds, analyze them using the Gemini API, and print the most significant news story to the console. If a significant news story is found, it will also be sent to the configured Telegram chat.
+#### Production Build
+```bash
+go build -o nonoise .
+./nonoise
+```
+
+The application will:
+1. Load configuration from `.env`
+2. Fetch news from configured RSS sources
+3. Analyze content using Gemini AI
+4. Send significant news to configured Telegram channels
+5. Provide structured logging output
+
+## Configuration
+
+### Required Environment Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `GEMINI_API_KEY` | Google Gemini API key | `AIzaSy...` |
+| `TELEGRAM_API_KEY` | Telegram bot API key | `1234567890:ABC...` |
+| `TELEGRAM_CHAT_ID` | Admin chat ID for notifications | `-1001234567890` |
+| `NEWS_SOURCES` | News sources configuration | `SVTV:https://svtv.org/feed/rss/` |
+
+### Optional Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `CONTENT_PREVIEW_LIMIT` | Content preview characters | `1000` |
+| `MAX_MESSAGE_LENGTH` | Telegram message limit | `4000` |
+| `API_TIMEOUT` | HTTP request timeout (seconds) | `30` |
+
+### Adding New News Sources
+
+To add a new news source, update the `NEWS_SOURCES` variable in your `.env` file:
+
+```env
+NEWS_SOURCES=SVTV:https://svtv.org/feed/rss/,Meduza:https://meduza.io/rss/all,NewSource:https://example.com/rss
+```
+
+For sources with non-standard formats, extend the `fetcher` package with custom parsing logic.

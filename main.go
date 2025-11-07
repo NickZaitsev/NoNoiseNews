@@ -3,66 +3,13 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
 	"strings"
 	"time"
 
 	"news/fetcher"
-
-	"github.com/joho/godotenv"
 )
 
-// Config holds the application's configuration.
-type Config struct {
-	GeminiAPIKey    string
-	TelegramAPIKey  string
-	TelegramChatID  string
-	SvtvChannelID   string
-	MeduzaChannelID string
-}
-
-// LoadConfig loads the configuration from a .env file.
-func LoadConfig() *Config {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatalf("Error loading .env file: %v", err)
-	}
-
-	geminiAPIKey := os.Getenv("GEMINI_API_KEY")
-	if geminiAPIKey == "" {
-		log.Fatal("GEMINI_API_KEY not set in .env file")
-	}
-
-	telegramAPIKey := os.Getenv("TELEGRAM_API_KEY")
-	if telegramAPIKey == "" {
-		log.Fatal("TELEGRAM_API_KEY not set in .env file")
-	}
-
-	telegramChatID := os.Getenv("TELEGRAM_CHAT_ID")
-	if telegramChatID == "" {
-		log.Fatal("TELEGRAM_CHAT_ID not set in .env file")
-	}
-
-	svtvChannelID := os.Getenv("SVTV_CHANNEL_ID")
-	if svtvChannelID == "" {
-		log.Fatal("SVTV_CHANNEL_ID not set in .env file")
-	}
-
-	meduzaChannelID := os.Getenv("MEDUZA_CHANNEL_ID")
-	if meduzaChannelID == "" {
-		log.Fatal("MEDUZA_CHANNEL_ID not set in .env file")
-	}
-
-	return &Config{
-		GeminiAPIKey:    geminiAPIKey,
-		TelegramAPIKey:  telegramAPIKey,
-		TelegramChatID:  telegramChatID,
-		SvtvChannelID:   svtvChannelID,
-		MeduzaChannelID: meduzaChannelID,
-	}
-}
-
-// processNewsSource fetches, analyzes, and sends news for a single source.
+// processNewsSource orchestrates the entire news processing workflow for a single source.
 func processNewsSource(
 	fetcher fetcher.Fetcher,
 	geminiService *GeminiService,
@@ -71,92 +18,149 @@ func processNewsSource(
 	sourceName string,
 	targetChannelIDs []string,
 ) {
-	fmt.Printf("\n--- Fetching from %s ---\n", sourceName)
-	items, err := fetcher.Fetch(time.Now().AddDate(0, 0, -1))
+	// Step 1: Fetch news
+	items, err := fetchNews(fetcher, sourceName)
+	if err != nil {
+		handleError(telegramService, config.TelegramChatID, sourceName, err, "fetching")
+		return
+	}
 
-	// Export first 100 symbols of extracted RSS content
+	// Step 2: Display content preview
+	displayContentPreview(items, sourceName)
+
+	// Step 3: Check if we have any items
+	if len(items) == 0 {
+		handleNoNews(telegramService, config.TelegramChatID, sourceName)
+		return
+	}
+
+	// Step 4: Analyze news with Gemini
+	analysis, err := analyzeNews(geminiService, items, sourceName)
+	if err != nil {
+		handleError(telegramService, config.TelegramChatID, sourceName, err, "analyzing")
+		return
+	}
+
+	// Step 5: Send notifications
+	sendNotifications(telegramService, config.TelegramChatID, analysis, targetChannelIDs, sourceName)
+}
+
+// fetchNews retrieves news items from the given fetcher.
+func fetchNews(fetcher fetcher.Fetcher, sourceName string) ([]fetcher.NewsItem, error) {
+	fmt.Printf("\n--- Fetching from %s ---\n", sourceName)
+	return fetcher.Fetch(time.Now().AddDate(0, 0, -1))
+}
+
+// displayContentPreview shows a preview of the first news item's content.
+func displayContentPreview(items []fetcher.NewsItem, _ string) {
 	if len(items) > 0 && items[0].Content != "" {
 		contentPreview := items[0].Content
-		if len(contentPreview) > 1000 {
-			contentPreview = contentPreview[:1000]
+		if len(contentPreview) > ContentPreviewLimit {
+			contentPreview = contentPreview[:ContentPreviewLimit]
 		}
 		fmt.Printf("RSS Content Preview: %s\n", contentPreview)
 	}
+}
 
-	if err != nil {
-		errorMsg := fmt.Sprintf("Error fetching from %s: %v", sourceName, err)
-		log.Print(errorMsg)
-		telegramService.SendMessage(config.TelegramChatID, errorMsg)
-		return
-	}
-
-	if len(items) == 0 {
-		fmt.Printf("No new items from %s.\n", sourceName)
-		return
-	}
-
+// analyzeNews uses Gemini AI to analyze and summarize the news items.
+func analyzeNews(geminiService *GeminiService, items []fetcher.NewsItem, _ string) (string, error) {
 	fmt.Println("--- Analyzing News with Gemini ---")
-	analysis, err := geminiService.AnalyzeNews(items)
-	if err != nil {
-		errorMsg := fmt.Sprintf("Failed to analyze news from %s: %v", sourceName, err)
-		log.Print(errorMsg)
-		telegramService.SendMessage(config.TelegramChatID, errorMsg)
-		return
-	}
+	return geminiService.AnalyzeNews(items)
+}
 
+// sendNotifications sends the analysis to the specified Telegram channels.
+func sendNotifications(telegramService *TelegramService, adminChatID, analysis string, targetChannelIDs []string, sourceName string) {
 	if analysis != "" && len(analysis) >= 34 {
 		fmt.Println(analysis)
 		// Escape triple asterisks to prevent Telegram Markdown parsing errors
-		sanitizedAnalysis := strings.ReplaceAll(analysis, "***", "\\*\\*\\*")
+		sanitizedAnalysis := strings.ReplaceAll(analysis, TelegramMarkdownEscape, "\\*\\*\\*")
 		for _, channelID := range targetChannelIDs {
-			// Add the channel ID to the message for context
-			message := fmt.Sprintf("%s\n\n%s", sanitizedAnalysis, channelID)
-			err = telegramService.SendMessage(channelID, message)
-			if err != nil {
-				log.Printf("Failed to send message to Telegram channel %s: %v", channelID, err)
-			} else {
-				// Send a confirmation to the admin chat with post text
-				// Truncate the analysis to avoid exceeding Telegram's message size limit
-				maxLength := 4000 // Telegram's message limit is around 4096 characters
-				analysisPreview := sanitizedAnalysis
-				if len(analysisPreview) > maxLength {
-					analysisPreview = analysisPreview[:maxLength-3] + "..."
-				}
-				notification := fmt.Sprintf("Posted to %s: %s", channelID, analysisPreview)
-				telegramService.SendMessage(config.TelegramChatID, notification)
-			}
+			sendToChannel(telegramService, adminChatID, sanitizedAnalysis, channelID, sourceName)
 		}
 	} else {
 		fmt.Printf("No significant news to report from %s.\n", sourceName)
-		telegramService.SendMessage(config.TelegramChatID, fmt.Sprintf("No significant news to report from %s.", sourceName))
+		telegramService.SendMessage(adminChatID, fmt.Sprintf("No significant news to report from %s.", sourceName))
 	}
 }
 
+// sendToChannel sends a message to a specific Telegram channel and notifies the admin.
+func sendToChannel(telegramService *TelegramService, adminChatID, sanitizedAnalysis, channelID, sourceName string) {
+	// Send the news analysis to the target channel (without adding channel ID to message)
+	err := telegramService.SendMessage(channelID, sanitizedAnalysis)
+	if err != nil {
+		LogError("Failed to send message to Telegram channel", err, "channel_id", channelID, "source", sourceName)
+		// Notify admin about the failure
+		telegramService.SendMessage(adminChatID, fmt.Sprintf("Failed to send news from %s to %s: %v", sourceName, channelID, err))
+	} else {
+		// Send a confirmation to the admin chat
+		// Truncate the analysis to avoid exceeding Telegram's message size limit
+		if len(sanitizedAnalysis) > MaxMessageLength {
+			LogInfo("News analysis truncated for admin notification", "channel_id", channelID, "source", sourceName, "original_length", len(sanitizedAnalysis), "truncated_length", MaxMessageLength)
+		}
+		notification := fmt.Sprintf("News posted to %s from %s", channelID, sourceName)
+		LogInfo("News posted successfully", "channel_id", channelID, "source", sourceName)
+		telegramService.SendMessage(adminChatID, notification)
+	}
+}
+
+// handleError logs and sends an error message about a failed operation.
+func handleError(telegramService *TelegramService, adminChatID, sourceName string, err error, operation string) {
+	LogError("Operation failed", err, "operation", operation, "source", sourceName)
+	errorMsg := fmt.Sprintf("Error %s from %s: %v", operation, sourceName, err)
+	telegramService.SendMessage(adminChatID, errorMsg)
+}
+
+// handleNoNews handles the case when no news items are found.
+func handleNoNews(telegramService *TelegramService, adminChatID, sourceName string) {
+	fmt.Printf("No new items from %s.\n", sourceName)
+	telegramService.SendMessage(adminChatID, fmt.Sprintf("No new items from %s.", sourceName))
+}
+
 func main() {
-	config := LoadConfig()
+	// Initialize structured logging
+	initLogger()
+	LogInfo("Starting NoNoise news fetcher", "version", "1.0.0")
+	
+	config, err := LoadConfig()
+	if err != nil {
+		LogError("Failed to load configuration", err)
+		log.Fatalf("Failed to load configuration: %v", err)
+	}
+	
 	geminiService := NewGeminiService(config.GeminiAPIKey)
 	defer geminiService.Close()
 	telegramService := NewTelegramService(config.TelegramAPIKey)
 
-	// Process SVTV
-	svtvFetcher := &fetcher.SvtvFetcher{URL: "https://svtv.org/feed/rss/"}
-	processNewsSource(
-		svtvFetcher,
-		geminiService,
-		telegramService,
-		config,
-		"SVTV",
-		[]string{config.SvtvChannelID},
-	)
-
-	// Process Meduza
-	meduzaFetcher := &fetcher.GenericFetcher{URL: "https://meduza.io/rss/all"}
-	processNewsSource(
-		meduzaFetcher,
-		geminiService,
-		telegramService,
-		config,
-		"Meduza",
-		[]string{config.MeduzaChannelID},
-	)
+	// Process each news source from configuration
+	for sourceName, sourceURL := range config.NewsSources {
+		var fetcherObj fetcher.Fetcher
+		
+		// Create appropriate fetcher based on source
+		if sourceName == SVTVSourceName {
+			fetcherObj = &fetcher.SvtvFetcher{URL: sourceURL}
+		} else {
+			fetcherObj = &fetcher.GenericFetcher{URL: sourceURL}
+		}
+		
+		// Get the target channel for this source
+		targetChannel, exists := config.TargetChannels[sourceName]
+		if !exists {
+			LogError("No target channel configured for source", nil, "source", sourceName)
+			continue
+		}
+		
+		// Use the target channel for news, admin chat ID for notifications
+		channelIDs := []string{targetChannel}
+		
+		processNewsSource(
+			fetcherObj,
+			geminiService,
+			telegramService,
+			config,
+			sourceName,
+			channelIDs,
+		)
+	}
+	
+	LogInfo("News fetching completed for all sources")
 }
