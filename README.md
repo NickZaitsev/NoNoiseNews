@@ -1,6 +1,8 @@
 # NoNoise News Fetcher
 
-NoNoise is a Go-based intelligent news aggregation application that implements the "NoNoise" philosophy: it remains silent most of the time and speaks only when truly important news is detected. The application uses AI-powered analysis to filter signal from noise, delivering only the most significant news stories.
+NoNoise is a Go-based intelligent news aggregation application that remains silent most of the time and speaks only when truly important news is detected.
+
+The application uses AI-powered analysis to relieve readers of the harm caused by an excessive amount of “news” that carries no signal, only noise.
 
 Program takes news from RSS, take the most important ones, and post it to a telegram channel.
 
