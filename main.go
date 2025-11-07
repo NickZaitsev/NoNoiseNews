@@ -100,7 +100,7 @@ func processNewsSource(
 		sanitizedAnalysis := strings.ReplaceAll(analysis, "***", "\\*\\*\\*")
 		for _, channelID := range targetChannelIDs {
 			// Add the channel ID to the message for context
-			message := fmt.Sprintf("%s\n\n*%s*", sanitizedAnalysis, channelID)
+			message := fmt.Sprintf("%s\n\n%s", sanitizedAnalysis, channelID)
 			err = telegramService.SendMessage(channelID, message)
 			if err != nil {
 				log.Printf("Failed to send message to Telegram channel %s: %v", channelID, err)
