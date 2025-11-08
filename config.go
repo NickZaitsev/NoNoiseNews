@@ -16,6 +16,7 @@ type Config struct {
 	GeminiAPIKey        string
 	TelegramAPIKey      string
 	TelegramChatID      string
+	GeminiPrompt        string
 	NewsSources         map[string]string
 	TargetChannels      map[string]string
 	ContentPreviewLimit int
@@ -34,6 +35,7 @@ func LoadConfig() (*Config, error) {
 	geminiAPIKey := getEnv("GEMINI_API_KEY", true)
 	telegramAPIKey := getEnv("TELEGRAM_API_KEY", true)
 	telegramChatID := getEnv("TELEGRAM_CHAT_ID", true)
+	geminiPrompt := getEnv("GEMINI_PROMPT", true)
 
 	// Load optional settings with defaults
 	contentPreviewLimit := getEnvAsInt("CONTENT_PREVIEW_LIMIT", ContentPreviewLimit)
@@ -52,6 +54,7 @@ func LoadConfig() (*Config, error) {
 		GeminiAPIKey:        geminiAPIKey,
 		TelegramAPIKey:      telegramAPIKey,
 		TelegramChatID:      telegramChatID,
+		GeminiPrompt:        geminiPrompt,
 		NewsSources:         newsSources,
 		TargetChannels:      targetChannels,
 		ContentPreviewLimit: contentPreviewLimit,

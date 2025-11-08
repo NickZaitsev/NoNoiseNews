@@ -22,12 +22,12 @@ func NewTelegramService(apiKey string) *TelegramService {
 }
 
 // SendMessage sends a message to the specified Telegram chat.
-func (s *TelegramService) SendMessage(chatID, message string) error {
+func (s *TelegramService) SendMessage(chatID, message, tag string) error {
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", s.apiKey)
 
 	requestBody, err := json.Marshal(map[string]string{
 		"chat_id":    chatID,
-		"text":       message,
+		"text":       message + tag,
 		"parse_mode": "HTML",
 	})
 	if err != nil {
@@ -47,5 +47,38 @@ func (s *TelegramService) SendMessage(chatID, message string) error {
 	}
 
 	log.Println("Message sent to Telegram successfully.")
+	return nil
+}
+
+// SendPhoto sends a photo with a caption to the specified Telegram chat.
+func (s *TelegramService) SendPhoto(chatID, photoURL, caption, tag string) error {
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendPhoto", s.apiKey)
+
+	// Prepare the request body as JSON
+	requestBody, err := json.Marshal(map[string]string{
+		"chat_id":    chatID,
+		"photo":      photoURL,
+		"caption":    caption + tag,
+		"parse_mode": "HTML",
+	})
+	if err != nil {
+		return fmt.Errorf("failed to marshal JSON for sendPhoto: %w", err)
+	}
+
+	// Send the request to the Telegram API
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(requestBody))
+	if err != nil {
+		return fmt.Errorf("failed to send photo by URL: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check the response status
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		LogError("Telegram API error while sending photo", nil, "status_code", resp.StatusCode, "response", string(body))
+		return fmt.Errorf("telegram API error: %s", string(body))
+	}
+
+	LogInfo("Photo sent successfully by URL", "chat_id", chatID)
 	return nil
 }

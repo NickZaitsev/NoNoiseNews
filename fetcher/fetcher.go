@@ -15,7 +15,8 @@ import (
 type NewsItem struct {
 	Title       string
 	Link        string
-	Content     string
+	Content     string // Cleaned content
+	RawContent  string // Raw content with HTML
 	PublishedOn time.Time
 }
 
@@ -118,6 +119,7 @@ func (f *GenericFetcher) performFetch(client *http.Client, req *http.Request, si
 				Title:       item.Title,
 				Link:        item.Link,
 				Content:     cleanHTML(content),
+				RawContent:  content, // Keep raw content
 				PublishedOn: *publishedTime,
 			})
 		}
@@ -211,6 +213,7 @@ func (f *SvtvFetcher) performSvtvFetch(client *http.Client, req *http.Request, s
 				Title:       item.Title,
 				Link:        item.Link,
 				Content:     cleanHTML(content),
+				RawContent:  content,
 				PublishedOn: *publishedTime,
 			})
 		}

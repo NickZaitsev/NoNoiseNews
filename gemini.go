@@ -15,49 +15,33 @@ import (
 // GeminiService is a service for interacting with the Gemini API.
 type GeminiService struct {
 	genaiClient *genai.Client
+	prompt      string
 }
 
 // NewGeminiService creates a new GeminiService.
-func NewGeminiService(apiKey string) *GeminiService {
+func NewGeminiService(apiKey string, prompt string) *GeminiService {
 	ctx := context.Background()
 	client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
 	if err != nil {
 		log.Fatalf("failed to create genai client: %v", err)
 	}
-	return &GeminiService{genaiClient: client}
+	return &GeminiService{genaiClient: client, prompt: prompt}
 }
 
 // AnalyzeNews analyzes news articles using the Gemini API.
 func (s *GeminiService) AnalyzeNews(items []fetcher.NewsItem) (string, error) {
 	var newsContent string
 	for _, item := range items {
-		newsContent += fmt.Sprintf("Title: %s\nContent: %s\n\n", item.Title, item.Content)
+		newsContent += fmt.Sprintf("Title: %s\nContent: %s\n\n", item.Title, item.RawContent)
 	}
 
-	prompt := fmt.Sprintf(`Вы являетесь экспертом по глобальным новостям и редактором. Ваша цель — определить самое глобально значимое событие. Оцените следующие статьи по долгосрочному глобальному значению по шкале от 1 до 10:
-
-* 10 = событие, которое, вероятно, будет помнить во всем мире в течение многих лет (например, начало крупной войны, убийство мирового лидера, исторический климатический рубеж, глобальный финансовый крах).
-* 9 = глобально значимое событие с крупными экономическими, политическими или научными последствиями.
-* 8 или ниже = событие, важное регионально или краткосрочно.
-
-Выберите*не более одной статьи с рейтингом 10/10. Если ни одна статья не заслуживает 10, ничего не выводите (верните пустую строку). Если есть сомнения в её уникальной мировой значимости, не выбирайте ничего (верните ""). 
-
-Если статья подходит, то выведите краткое резюме: 
-
-* Начните с жирного заголовка. Выделяйте заголовок тегами <b> слева и </b> справа.
-* Краткое содержание новости с самыми важными. Старайся не повторять информацию с заголовка в теле текста.
-
-Разделяйте смысловые блоки двойным переносом строки, в идеале 2 предложения на параграф (допустимо 1-3). Не пиши слишком длинные и сложные предложения. Длина новости должна быть не больше чем 6 предложений!
-
-Вывод должен быть только переписанным текстом, без объяснений, оценок или ссылок.
-
-Входные новости: %s`, newsContent)
+	fullPrompt := fmt.Sprintf(s.prompt, newsContent)
 
 	model := s.genaiClient.GenerativeModel("gemini-2.5-pro")
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	resp, err := model.GenerateContent(ctx, genai.Text(fullPrompt))
 	if err != nil {
 		return "", fmt.Errorf("failed to generate content: %w", err)
 	}

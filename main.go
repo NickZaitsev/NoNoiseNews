@@ -83,21 +83,38 @@ func sendNotifications(telegramService *TelegramService, adminChatID, analysis s
 	}
 }
 
-// sendToChannel sends a message to a specific Telegram channel and notifies the admin.
+// sendToChannel handles sending the news analysis to the appropriate channel.
 func sendToChannel(telegramService *TelegramService, adminChatID, sanitizedAnalysis, channelID, sourceName string) {
-	// Send the news analysis to the target channel (without adding channel ID to message)
-	err := telegramService.SendMessage(channelID, sanitizedAnalysis)
+	lines := strings.SplitN(sanitizedAnalysis, "\n", 2)
+	photoURL := ""
+	message := sanitizedAnalysis
+
+	if len(lines) > 1 && (strings.HasPrefix(lines[0], "http://") || strings.HasPrefix(lines[0], "https://")) {
+		photoURL = lines[0]
+		message = lines[1]
+	}
+
+	var err error
+	if photoURL != "" {
+		err = telegramService.SendPhoto(channelID, photoURL, message)
+		if err != nil {
+			LogError("Failed to send photo, falling back to text message", err, "channel_id", channelID, "photo_url", photoURL)
+			telegramService.SendMessage(adminChatID, fmt.Sprintf("Failed to send photo from %s to %s. Error: %v. Falling back to text.", sourceName, channelID, err))
+			// Fallback to sending the original full message as text
+			err = telegramService.SendMessage(channelID, sanitizedAnalysis)
+		}
+	} else {
+		err = telegramService.SendMessage(channelID, message)
+	}
+
 	if err != nil {
-		LogError("Failed to send message to Telegram channel", err, "channel_id", channelID, "source", sourceName)
-		// Notify admin about the failure
+		LogError("Failed to send final message to Telegram channel", err, "channel_id", channelID, "source", sourceName)
 		telegramService.SendMessage(adminChatID, fmt.Sprintf("Failed to send news from %s to %s: %v", sourceName, channelID, err))
 	} else {
-		// Send a confirmation to the admin chat
-		// Truncate the analysis to avoid exceeding Telegram's message size limit
-		if len(sanitizedAnalysis) > MaxMessageLength {
-			LogInfo("News analysis truncated for admin notification", "channel_id", channelID, "source", sourceName, "original_length", len(sanitizedAnalysis), "truncated_length", MaxMessageLength)
-		}
 		notification := fmt.Sprintf("News posted to %s from %s", channelID, sourceName)
+		if photoURL != "" {
+			notification += " (with photo)"
+		}
 		LogInfo("News posted successfully", "channel_id", channelID, "source", sourceName)
 		telegramService.SendMessage(adminChatID, notification)
 	}
@@ -127,7 +144,7 @@ func main() {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
 	
-	geminiService := NewGeminiService(config.GeminiAPIKey)
+	geminiService := NewGeminiService(config.GeminiAPIKey, config.GeminiPrompt)
 	defer geminiService.Close()
 	telegramService := NewTelegramService(config.TelegramAPIKey)
 
