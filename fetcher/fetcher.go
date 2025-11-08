@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mmcdole/gofeed"
+	"news/utils"
 )
 
 // NewsItem represents a single news article.
@@ -22,7 +23,7 @@ type NewsItem struct {
 
 // Fetcher is an interface for fetching news.
 type Fetcher interface {
-	Fetch(since time.Time) ([]NewsItem, error)
+	Fetch(since time.Time, attempts int, delay time.Duration) ([]NewsItem, error)
 }
 
 // cleanHTML removes HTML tags from a string.
@@ -67,14 +68,20 @@ type GenericFetcher struct {
 }
 
 // Fetch fetches news from the feed.
-func (f *GenericFetcher) Fetch(since time.Time) ([]NewsItem, error) {
-	client, req, err := createHTTPRequest(f.URL)
-	if err != nil {
-		return nil, err
-	}
-	defer client.CloseIdleConnections()
+func (f *GenericFetcher) Fetch(since time.Time, attempts int, delay time.Duration) ([]NewsItem, error) {
+	var newsItems []NewsItem
+	var err error
 
-	return f.performFetch(client, req, since)
+	newsItems, err = utils.Retry(attempts, delay, func() ([]NewsItem, error) {
+		client, req, err := createHTTPRequest(f.URL)
+		if err != nil {
+			return nil, err
+		}
+		defer client.CloseIdleConnections()
+		return f.performFetch(client, req, since)
+	})
+
+	return newsItems, err
 }
 
 // performFetch performs the actual fetching and parsing logic.
@@ -148,14 +155,20 @@ func parseRussianDate(dateStr string) (*time.Time, error) {
 }
 
 // Fetch fetches news from the svtv.org feed, handling its custom date format.
-func (f *SvtvFetcher) Fetch(since time.Time) ([]NewsItem, error) {
-	client, req, err := createHTTPRequest(f.URL)
-	if err != nil {
-		return nil, err
-	}
-	defer client.CloseIdleConnections()
+func (f *SvtvFetcher) Fetch(since time.Time, attempts int, delay time.Duration) ([]NewsItem, error) {
+	var newsItems []NewsItem
+	var err error
 
-	return f.performSvtvFetch(client, req, since)
+	newsItems, err = utils.Retry(attempts, delay, func() ([]NewsItem, error) {
+		client, req, err := createHTTPRequest(f.URL)
+		if err != nil {
+			return nil, err
+		}
+		defer client.CloseIdleConnections()
+		return f.performSvtvFetch(client, req, since)
+	})
+
+	return newsItems, err
 }
 
 // performSvtvFetch performs the actual fetching and parsing logic with custom date parsing.

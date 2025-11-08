@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"news/fetcher"
+	"news/utils"
 
 	"github.com/google/generative-ai-go/genai"
 	"google.golang.org/api/option"
@@ -29,7 +30,7 @@ func NewGeminiService(apiKey string, prompt string) *GeminiService {
 }
 
 // AnalyzeNews analyzes news articles using the Gemini API.
-func (s *GeminiService) AnalyzeNews(items []fetcher.NewsItem) (string, error) {
+func (s *GeminiService) AnalyzeNews(items []fetcher.NewsItem, attempts int, delay time.Duration) (string, error) {
 	var newsContent string
 	for _, item := range items {
 		newsContent += fmt.Sprintf("Title: %s\nContent: %s\n\n", item.Title, item.RawContent)
@@ -37,24 +38,27 @@ func (s *GeminiService) AnalyzeNews(items []fetcher.NewsItem) (string, error) {
 
 	fullPrompt := fmt.Sprintf(s.prompt, newsContent)
 
-	model := s.genaiClient.GenerativeModel("gemini-2.5-pro")
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
+	analysis, err := utils.Retry(attempts, delay, func() (string, error) {
+		model := s.genaiClient.GenerativeModel("gemini-2.5-pro")
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
 
-	resp, err := model.GenerateContent(ctx, genai.Text(fullPrompt))
-	if err != nil {
-		return "", fmt.Errorf("failed to generate content: %w", err)
-	}
+		resp, err := model.GenerateContent(ctx, genai.Text(fullPrompt))
+		if err != nil {
+			return "", fmt.Errorf("failed to generate content: %w", err)
+		}
 
-	if len(resp.Candidates) > 0 && resp.Candidates[0].Content != nil {
-		for _, part := range resp.Candidates[0].Content.Parts {
-			if txt, ok := part.(genai.Text); ok {
-				return string(txt), nil
+		if len(resp.Candidates) > 0 && resp.Candidates[0].Content != nil {
+			for _, part := range resp.Candidates[0].Content.Parts {
+				if txt, ok := part.(genai.Text); ok {
+					return string(txt), nil
+				}
 			}
 		}
-	}
+		return "", nil
+	})
 
-	return "", nil
+	return analysis, err
 }
 
 // Close closes the Gemini client.

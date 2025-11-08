@@ -11,23 +11,42 @@ import (
 
 // TelegramService handles sending messages to a Telegram bot.
 type TelegramService struct {
-	apiKey string
+	apiKey         string
+	targetChannels map[string]string
 }
 
 // NewTelegramService creates a new TelegramService.
-func NewTelegramService(apiKey string) *TelegramService {
+func NewTelegramService(apiKey string, targetChannels map[string]string) *TelegramService {
 	return &TelegramService{
-		apiKey: apiKey,
+		apiKey:         apiKey,
+		targetChannels: targetChannels,
 	}
 }
 
 // SendMessage sends a message to the specified Telegram chat.
-func (s *TelegramService) SendMessage(chatID, message, tag string) error {
+func (s *TelegramService) SendMessage(chatID, sourceName, message string) error {
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", s.apiKey)
+
+	fullMessage := message
+
+	// Check if the chatID is a target channel and append the identifier if so
+	isTargetChannel := false
+	for _, channel := range s.targetChannels {
+		if channel == chatID {
+			isTargetChannel = true
+			break
+		}
+	}
+
+	if isTargetChannel {
+		if identifier, ok := s.targetChannels[sourceName]; ok {
+			fullMessage = message + fmt.Sprintf("\n\n%s", identifier)
+		}
+	}
 
 	requestBody, err := json.Marshal(map[string]string{
 		"chat_id":    chatID,
-		"text":       message + tag,
+		"text":       fullMessage,
 		"parse_mode": "HTML",
 	})
 	if err != nil {
@@ -51,14 +70,34 @@ func (s *TelegramService) SendMessage(chatID, message, tag string) error {
 }
 
 // SendPhoto sends a photo with a caption to the specified Telegram chat.
-func (s *TelegramService) SendPhoto(chatID, photoURL, caption, tag string) error {
+func (s *TelegramService) SendPhoto(chatID, photoURL, sourceName, caption string) error {
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendPhoto", s.apiKey)
+
+	fullCaption := caption
+
+	// Check if the chatID is a target channel and append the identifier if so
+	isTargetChannel := false
+	for _, channel := range s.targetChannels {
+		if channel == chatID {
+			isTargetChannel = true
+			break
+		}
+	}
+
+	if isTargetChannel {
+		if identifier, ok := s.targetChannels[sourceName]; ok {
+			fullCaption = caption + fmt.Sprintf("\n\n%s", identifier)
+		}
+	}
+	if len(fullCaption) > MaxTelegramCaptionLength {
+		fullCaption = fullCaption[:MaxTelegramCaptionLength-3] + "..."
+	}
 
 	// Prepare the request body as JSON
 	requestBody, err := json.Marshal(map[string]string{
 		"chat_id":    chatID,
 		"photo":      photoURL,
-		"caption":    caption + tag,
+		"caption":    fullCaption,
 		"parse_mode": "HTML",
 	})
 	if err != nil {

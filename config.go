@@ -22,6 +22,8 @@ type Config struct {
 	ContentPreviewLimit int
 	MaxMessageLength    int
 	APITimeout          int
+	RetryAttempts       int
+	RetryDelay          time.Duration
 }
 
 // LoadConfig loads the configuration from a .env file.
@@ -41,6 +43,8 @@ func LoadConfig() (*Config, error) {
 	contentPreviewLimit := getEnvAsInt("CONTENT_PREVIEW_LIMIT", ContentPreviewLimit)
 	maxMessageLength := getEnvAsInt("MAX_MESSAGE_LENGTH", MaxMessageLength)
 	apiTimeout := getEnvAsInt("API_TIMEOUT", int(DefaultHTTPTimeout/time.Second))
+	retryAttempts := getEnvAsInt("RETRY_ATTEMPTS", DefaultRetryAttempts)
+	retryDelay := getEnvAsInt("RETRY_DELAY", int(DefaultRetryDelay/time.Second))
 
 	// Load news sources from environment variable
 	newsSourcesEnv := getEnv("NEWS_SOURCES", true)
@@ -60,6 +64,8 @@ func LoadConfig() (*Config, error) {
 		ContentPreviewLimit: contentPreviewLimit,
 		MaxMessageLength:    maxMessageLength,
 		APITimeout:          apiTimeout,
+		RetryAttempts:       retryAttempts,
+		RetryDelay:          time.Duration(retryDelay) * time.Second,
 	}, nil
 }
 

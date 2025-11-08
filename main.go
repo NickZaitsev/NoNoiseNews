@@ -19,7 +19,7 @@ func processNewsSource(
 	targetChannelIDs []string,
 ) {
 	// Step 1: Fetch news
-	items, err := fetchNews(fetcher, sourceName)
+	items, err := fetchNews(fetcher, sourceName, config)
 	if err != nil {
 		handleError(telegramService, config.TelegramChatID, sourceName, err, "fetching")
 		return
@@ -35,7 +35,7 @@ func processNewsSource(
 	}
 
 	// Step 4: Analyze news with Gemini
-	analysis, err := analyzeNews(geminiService, items, sourceName)
+	analysis, err := analyzeNews(geminiService, items, sourceName, config)
 	if err != nil {
 		handleError(telegramService, config.TelegramChatID, sourceName, err, "analyzing")
 		return
@@ -46,9 +46,9 @@ func processNewsSource(
 }
 
 // fetchNews retrieves news items from the given fetcher.
-func fetchNews(fetcher fetcher.Fetcher, sourceName string) ([]fetcher.NewsItem, error) {
+func fetchNews(fetcher fetcher.Fetcher, sourceName string, config *Config) ([]fetcher.NewsItem, error) {
 	fmt.Printf("\n--- Fetching from %s ---\n", sourceName)
-	return fetcher.Fetch(time.Now().AddDate(0, 0, -1))
+	return fetcher.Fetch(time.Now().AddDate(0, 0, -1), config.RetryAttempts, config.RetryDelay)
 }
 
 // displayContentPreview shows a preview of the first news item's content.
@@ -63,9 +63,9 @@ func displayContentPreview(items []fetcher.NewsItem, _ string) {
 }
 
 // analyzeNews uses Gemini AI to analyze and summarize the news items.
-func analyzeNews(geminiService *GeminiService, items []fetcher.NewsItem, _ string) (string, error) {
+func analyzeNews(geminiService *GeminiService, items []fetcher.NewsItem, _ string, config *Config) (string, error) {
 	fmt.Println("--- Analyzing News with Gemini ---")
-	return geminiService.AnalyzeNews(items)
+	return geminiService.AnalyzeNews(items, config.RetryAttempts, config.RetryDelay)
 }
 
 // sendNotifications sends the analysis to the specified Telegram channels.
@@ -79,7 +79,7 @@ func sendNotifications(telegramService *TelegramService, adminChatID, analysis s
 		}
 	} else {
 		fmt.Printf("No significant news to report from %s.\n", sourceName)
-		telegramService.SendMessage(adminChatID, fmt.Sprintf("No significant news to report from %s.", sourceName))
+		telegramService.SendMessage(adminChatID, sourceName, fmt.Sprintf("No significant news to report from %s.", sourceName))
 	}
 }
 
@@ -96,27 +96,27 @@ func sendToChannel(telegramService *TelegramService, adminChatID, sanitizedAnaly
 
 	var err error
 	if photoURL != "" {
-		err = telegramService.SendPhoto(channelID, photoURL, message)
+		err = telegramService.SendPhoto(channelID, photoURL, sourceName, message)
 		if err != nil {
 			LogError("Failed to send photo, falling back to text message", err, "channel_id", channelID, "photo_url", photoURL)
-			telegramService.SendMessage(adminChatID, fmt.Sprintf("Failed to send photo from %s to %s. Error: %v. Falling back to text.", sourceName, channelID, err))
+			telegramService.SendMessage(adminChatID, sourceName, fmt.Sprintf("Failed to send photo from %s to %s. Error: %v. Falling back to text.", sourceName, channelID, err))
 			// Fallback to sending the original full message as text
-			err = telegramService.SendMessage(channelID, sanitizedAnalysis)
+			err = telegramService.SendMessage(channelID, sourceName, sanitizedAnalysis)
 		}
 	} else {
-		err = telegramService.SendMessage(channelID, message)
+		err = telegramService.SendMessage(channelID, sourceName, message)
 	}
 
 	if err != nil {
 		LogError("Failed to send final message to Telegram channel", err, "channel_id", channelID, "source", sourceName)
-		telegramService.SendMessage(adminChatID, fmt.Sprintf("Failed to send news from %s to %s: %v", sourceName, channelID, err))
+		telegramService.SendMessage(adminChatID, sourceName, fmt.Sprintf("Failed to send news from %s to %s: %v", sourceName, channelID, err))
 	} else {
 		notification := fmt.Sprintf("News posted to %s from %s", channelID, sourceName)
 		if photoURL != "" {
 			notification += " (with photo)"
 		}
 		LogInfo("News posted successfully", "channel_id", channelID, "source", sourceName)
-		telegramService.SendMessage(adminChatID, notification)
+		telegramService.SendMessage(adminChatID, sourceName, notification)
 	}
 }
 
@@ -124,13 +124,13 @@ func sendToChannel(telegramService *TelegramService, adminChatID, sanitizedAnaly
 func handleError(telegramService *TelegramService, adminChatID, sourceName string, err error, operation string) {
 	LogError("Operation failed", err, "operation", operation, "source", sourceName)
 	errorMsg := fmt.Sprintf("Error %s from %s: %v", operation, sourceName, err)
-	telegramService.SendMessage(adminChatID, errorMsg)
+	telegramService.SendMessage(adminChatID, sourceName, errorMsg)
 }
 
 // handleNoNews handles the case when no news items are found.
 func handleNoNews(telegramService *TelegramService, adminChatID, sourceName string) {
 	fmt.Printf("No new items from %s.\n", sourceName)
-	telegramService.SendMessage(adminChatID, fmt.Sprintf("No new items from %s.", sourceName))
+	telegramService.SendMessage(adminChatID, sourceName, fmt.Sprintf("No new items from %s.", sourceName))
 }
 
 func main() {
@@ -146,7 +146,7 @@ func main() {
 	
 	geminiService := NewGeminiService(config.GeminiAPIKey, config.GeminiPrompt)
 	defer geminiService.Close()
-	telegramService := NewTelegramService(config.TelegramAPIKey)
+	telegramService := NewTelegramService(config.TelegramAPIKey, config.TargetChannels)
 
 	// Process each news source from configuration
 	for sourceName, sourceURL := range config.NewsSources {

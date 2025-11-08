@@ -10,12 +10,17 @@ const (
 	DefaultHTTPTimeout = 30 * time.Second
 	APITimeout         = 60 * time.Second
 
+	// Retry mechanism
+	DefaultRetryAttempts = 3
+	DefaultRetryDelay    = 2 * time.Second
+
 	// Content limits
 	ContentPreviewLimit = 1000
 	MaxMessageLength    = 4000
 
 	// Telegram constants
-	TelegramMarkdownEscape = "***"
+	TelegramMarkdownEscape   = "***"
+	MaxTelegramCaptionLength = 1024
 )
 
 // User agent and headers for HTTP requests
