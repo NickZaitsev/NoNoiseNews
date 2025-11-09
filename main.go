@@ -42,7 +42,7 @@ func processNewsSource(
 	}
 
 	// Step 5: Send notifications
-	sendNotifications(telegramService, config.TelegramChatID, analysis, targetChannelIDs, sourceName)
+	sendNotifications(telegramService, config.TelegramChatID, analysis, items, targetChannelIDs, sourceName)
 }
 
 // fetchNews retrieves news items from the given fetcher.
@@ -69,13 +69,19 @@ func analyzeNews(geminiService *GeminiService, items []fetcher.NewsItem, _ strin
 }
 
 // sendNotifications sends the analysis to the specified Telegram channels.
-func sendNotifications(telegramService *TelegramService, adminChatID, analysis string, targetChannelIDs []string, sourceName string) {
+func sendNotifications(telegramService *TelegramService, adminChatID, analysis string, items []fetcher.NewsItem, targetChannelIDs []string, sourceName string) {
 	if analysis != "" && len(analysis) >= 34 {
 		fmt.Println(analysis)
-		// Escape triple asterisks to prevent Telegram Markdown parsing errors
 		sanitizedAnalysis := strings.ReplaceAll(analysis, TelegramMarkdownEscape, "\\*\\*\\*")
+
+		// Determine the best image URL from all items
+		var bestImageURL string
+		if len(items) > 0 {
+			bestImageURL = items[0].ImageURL
+		}
+
 		for _, channelID := range targetChannelIDs {
-			sendToChannel(telegramService, adminChatID, sanitizedAnalysis, channelID, sourceName)
+			sendToChannel(telegramService, adminChatID, sanitizedAnalysis, bestImageURL, channelID, sourceName)
 		}
 	} else {
 		fmt.Printf("No significant news to report from %s.\n", sourceName)
@@ -84,16 +90,7 @@ func sendNotifications(telegramService *TelegramService, adminChatID, analysis s
 }
 
 // sendToChannel handles sending the news analysis to the appropriate channel.
-func sendToChannel(telegramService *TelegramService, adminChatID, sanitizedAnalysis, channelID, sourceName string) {
-	lines := strings.SplitN(sanitizedAnalysis, "\n", 2)
-	photoURL := ""
-	message := sanitizedAnalysis
-
-	if len(lines) > 1 && (strings.HasPrefix(lines[0], "http://") || strings.HasPrefix(lines[0], "https://")) {
-		photoURL = lines[0]
-		message = lines[1]
-	}
-
+func sendToChannel(telegramService *TelegramService, adminChatID, message, photoURL, channelID, sourceName string) {
 	var err error
 	if photoURL != "" {
 		err = telegramService.SendPhoto(channelID, photoURL, sourceName, message)
@@ -101,7 +98,7 @@ func sendToChannel(telegramService *TelegramService, adminChatID, sanitizedAnaly
 			LogError("Failed to send photo, falling back to text message", err, "channel_id", channelID, "photo_url", photoURL)
 			telegramService.SendMessage(adminChatID, sourceName, fmt.Sprintf("Failed to send photo from %s to %s. Error: %v. Falling back to text.", sourceName, channelID, err))
 			// Fallback to sending the original full message as text
-			err = telegramService.SendMessage(channelID, sourceName, sanitizedAnalysis)
+			err = telegramService.SendMessage(channelID, sourceName, message)
 		}
 	} else {
 		err = telegramService.SendMessage(channelID, sourceName, message)

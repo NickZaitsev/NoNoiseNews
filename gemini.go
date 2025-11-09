@@ -33,7 +33,11 @@ func NewGeminiService(apiKey string, prompt string) *GeminiService {
 func (s *GeminiService) AnalyzeNews(items []fetcher.NewsItem, attempts int, delay time.Duration) (string, error) {
 	var newsContent string
 	for _, item := range items {
-		newsContent += fmt.Sprintf("Title: %s\nContent: %s\n\n", item.Title, item.RawContent)
+		imagePart := ""
+		if item.ImageURL != "" {
+			imagePart = fmt.Sprintf("Image: %s\n", item.ImageURL)
+		}
+		newsContent += fmt.Sprintf("Title: %s\n%sContent: %s\n\n", item.Title, imagePart, item.RawContent)
 	}
 
 	fullPrompt := fmt.Sprintf(s.prompt, newsContent)

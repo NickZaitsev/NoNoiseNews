@@ -19,6 +19,7 @@ type NewsItem struct {
 	Content     string // Cleaned content
 	RawContent  string // Raw content with HTML
 	PublishedOn time.Time
+	ImageURL    string
 }
 
 // Fetcher is an interface for fetching news.
@@ -31,6 +32,34 @@ func cleanHTML(rawHTML string) string {
 	cleanr := regexp.MustCompile("<.*?>")
 	cleantext := cleanr.ReplaceAllString(rawHTML, "")
 	return cleantext
+}
+
+// extractImageURL extracts the image URL from a gofeed.Item.
+func extractImageURL(item *gofeed.Item) string {
+	// 1. Check for Media RSS extension
+	if media, ok := item.Extensions["media"]; ok {
+		if content, ok := media["content"]; ok && len(content) > 0 {
+			if url, ok := content[0].Attrs["url"]; ok {
+				return url
+			}
+		}
+	}
+
+	// 2. Check the standard Image field
+	if item.Image != nil {
+		return item.Image.URL
+	}
+
+	// 3. Check for enclosures of type image
+	if len(item.Enclosures) > 0 {
+		for _, enclosure := range item.Enclosures {
+			if strings.HasPrefix(enclosure.Type, "image/") {
+				return enclosure.URL
+			}
+		}
+	}
+
+	return ""
 }
 
 // createHTTPRequest creates a standardized HTTP client and request for RSS fetching.
@@ -122,12 +151,15 @@ func (f *GenericFetcher) performFetch(client *http.Client, req *http.Request, si
 				content = item.Description
 			}
 
+			imageURL := extractImageURL(item)
+
 			newsItems = append(newsItems, NewsItem{
 				Title:       item.Title,
 				Link:        item.Link,
 				Content:     cleanHTML(content),
 				RawContent:  content, // Keep raw content
 				PublishedOn: *publishedTime,
+				ImageURL:    imageURL,
 			})
 		}
 	}
@@ -222,12 +254,15 @@ func (f *SvtvFetcher) performSvtvFetch(client *http.Client, req *http.Request, s
 				content = item.Description
 			}
 
+			imageURL := extractImageURL(item)
+
 			newsItems = append(newsItems, NewsItem{
 				Title:       item.Title,
 				Link:        item.Link,
 				Content:     cleanHTML(content),
 				RawContent:  content,
 				PublishedOn: *publishedTime,
+				ImageURL:    imageURL,
 			})
 		}
 	}
