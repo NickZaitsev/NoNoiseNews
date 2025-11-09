@@ -21,6 +21,8 @@ const (
 	// Telegram constants
 	TelegramMarkdownEscape   = "***"
 	MaxTelegramCaptionLength = 1024
+	MaxPhotoRetries          = 3
+	PhotoRetryDelay          = 3 * time.Second
 )
 
 // User agent and headers for HTTP requests

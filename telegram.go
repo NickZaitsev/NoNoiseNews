@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"time"
 )
 
 // TelegramService handles sending messages to a Telegram bot.
@@ -27,7 +28,7 @@ func NewTelegramService(apiKey string, targetChannels map[string]string) *Telegr
 func (s *TelegramService) SendMessage(chatID, sourceName, message string) error {
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", s.apiKey)
 
-	fullMessage := message
+	messageToSend := message
 
 	// Check if the chatID is a target channel and append the identifier if so
 	isTargetChannel := false
@@ -40,13 +41,13 @@ func (s *TelegramService) SendMessage(chatID, sourceName, message string) error 
 
 	if isTargetChannel {
 		if identifier, ok := s.targetChannels[sourceName]; ok {
-			fullMessage = message + fmt.Sprintf("\n\n%s", identifier)
+			messageToSend = message + fmt.Sprintf("\n\n%s", identifier)
 		}
 	}
 
 	requestBody, err := json.Marshal(map[string]string{
 		"chat_id":    chatID,
-		"text":       fullMessage,
+		"text":       messageToSend,
 		"parse_mode": "HTML",
 	})
 	if err != nil {
@@ -89,12 +90,11 @@ func (s *TelegramService) SendPhoto(chatID, photoURL, sourceName, caption string
 			fullCaption = caption + fmt.Sprintf("\n\n%s", identifier)
 		}
 	}
-	log.Printf("fullcaption: %s", fullCaption)
+	// log.Printf("Caption sent to telegram: %s", fullCaption)
 	runes := []rune(fullCaption)
 	if len(runes) > MaxTelegramCaptionLength {
 		fullCaption = string(runes[:MaxTelegramCaptionLength-3]) + "..."
 	}
-	log.Printf("fullcaption: %s", fullCaption)
 	// Prepare the request body as JSON
 	requestBody, err := json.Marshal(map[string]string{
 		"chat_id":    chatID,
@@ -106,20 +106,40 @@ func (s *TelegramService) SendPhoto(chatID, photoURL, sourceName, caption string
 		return fmt.Errorf("failed to marshal JSON for sendPhoto: %w", err)
 	}
 
-	// Send the request to the Telegram API
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(requestBody))
-	if err != nil {
-		return fmt.Errorf("failed to send photo by URL: %w", err)
-	}
-	defer resp.Body.Close()
+	var lastErr error
+	for i := 0; i < MaxPhotoRetries; i++ {
+		resp, err := http.Post(url, "application/json", bytes.NewBuffer(requestBody))
+		if err != nil {
+			lastErr = fmt.Errorf("failed to send photo by URL: %w", err)
+			LogError("Failed to send photo", lastErr, "attempt", i+1)
+			if i < MaxPhotoRetries-1 {
+				time.Sleep(PhotoRetryDelay)
+			}
+			continue
+		}
 
-	// Check the response status
-	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusOK {
+			resp.Body.Close()
+			LogInfo("Photo sent successfully by URL", "chat_id", chatID)
+			return nil
+		}
+
 		body, _ := io.ReadAll(resp.Body)
-		LogError("Telegram API error while sending photo", nil, "status_code", resp.StatusCode, "response", string(body))
-		return fmt.Errorf("telegram API error: %s", string(body))
+		resp.Body.Close()
+		lastErr = fmt.Errorf("telegram API error: %s", string(body))
+		LogError("Telegram API error while sending photo", lastErr, "status_code", resp.StatusCode, "response", string(body), "attempt", i+1)
+
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != http.StatusTooManyRequests {
+			break
+		}
+
+		if i < MaxPhotoRetries-1 {
+			time.Sleep(PhotoRetryDelay)
+		}
 	}
 
-	LogInfo("Photo sent successfully by URL", "chat_id", chatID)
-	return nil
+	LogError("All retries for sending photo failed, falling back to text message", lastErr, "chat_id", chatID)
+
+	fallbackMessage := fmt.Sprintf("%s\n\n(Image: %s)", caption, photoURL)
+	return s.SendMessage(chatID, sourceName, fallbackMessage)
 }
