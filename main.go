@@ -35,14 +35,14 @@ func processNewsSource(
 	}
 
 	// Step 4: Analyze news with Gemini
-	analysis, err := analyzeNews(geminiService, items, sourceName, config)
+	geminiImageURL, analysis, err := analyzeNews(geminiService, items, sourceName, config)
 	if err != nil {
 		handleError(telegramService, config.TelegramChatID, sourceName, err, "analyzing")
 		return
 	}
 
 	// Step 5: Send notifications
-	sendNotifications(telegramService, config.TelegramChatID, analysis, items, targetChannelIDs, sourceName)
+	sendNotifications(telegramService, config.TelegramChatID, analysis, geminiImageURL, items, targetChannelIDs, sourceName)
 }
 
 // fetchNews retrieves news items from the given fetcher.
@@ -63,20 +63,22 @@ func displayContentPreview(items []fetcher.NewsItem, _ string) {
 }
 
 // analyzeNews uses Gemini AI to analyze and summarize the news items.
-func analyzeNews(geminiService *GeminiService, items []fetcher.NewsItem, _ string, config *Config) (string, error) {
+func analyzeNews(geminiService *GeminiService, items []fetcher.NewsItem, _ string, config *Config) (string, string, error) {
 	fmt.Println("--- Analyzing News with Gemini ---")
 	return geminiService.AnalyzeNews(items, config.RetryAttempts, config.RetryDelay)
 }
 
 // sendNotifications sends the analysis to the specified Telegram channels.
-func sendNotifications(telegramService *TelegramService, adminChatID, analysis string, items []fetcher.NewsItem, targetChannelIDs []string, sourceName string) {
+func sendNotifications(telegramService *TelegramService, adminChatID, analysis, geminiImageURL string, items []fetcher.NewsItem, targetChannelIDs []string, sourceName string) {
 	if analysis != "" && len(analysis) >= 34 {
 		fmt.Println(analysis)
 		sanitizedAnalysis := strings.ReplaceAll(analysis, TelegramMarkdownEscape, "\\*\\*\\*")
 
-		// Determine the best image URL from all items
+		// Prioritize Gemini image URL, otherwise fall back to the first item's image
 		var bestImageURL string
-		if len(items) > 0 {
+		if geminiImageURL != "" {
+			bestImageURL = geminiImageURL
+		} else if len(items) > 0 {
 			bestImageURL = items[0].ImageURL
 		}
 

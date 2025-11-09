@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"news/fetcher"
@@ -30,7 +31,7 @@ func NewGeminiService(apiKey string, prompt string) *GeminiService {
 }
 
 // AnalyzeNews analyzes news articles using the Gemini API.
-func (s *GeminiService) AnalyzeNews(items []fetcher.NewsItem, attempts int, delay time.Duration) (string, error) {
+func (s *GeminiService) AnalyzeNews(items []fetcher.NewsItem, attempts int, delay time.Duration) (string, string, error) {
 	var newsContent string
 	for _, item := range items {
 		imagePart := ""
@@ -43,8 +44,8 @@ func (s *GeminiService) AnalyzeNews(items []fetcher.NewsItem, attempts int, dela
 	fullPrompt := fmt.Sprintf(s.prompt, newsContent)
 
 	analysis, err := utils.Retry(attempts, delay, func() (string, error) {
-		model := s.genaiClient.GenerativeModel("gemini-2.5-pro")
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		model := s.genaiClient.GenerativeModel(GeminiModel)
+		ctx, cancel := context.WithTimeout(context.Background(), APITimeout)
 		defer cancel()
 
 		resp, err := model.GenerateContent(ctx, genai.Text(fullPrompt))
@@ -62,7 +63,22 @@ func (s *GeminiService) AnalyzeNews(items []fetcher.NewsItem, attempts int, dela
 		return "", nil
 	})
 
-	return analysis, err
+	if err != nil {
+		return "", "", err
+	}
+
+	// Extract image URL from the first line and the rest of the analysis
+	parts := strings.SplitN(analysis, "\n", 2)
+	if len(parts) > 0 && (strings.HasPrefix(parts[0], "http://") || strings.HasPrefix(parts[0], "https://")) {
+		imageURL := parts[0]
+		analysisText := ""
+		if len(parts) > 1 {
+			analysisText = parts[1]
+		}
+		return imageURL, analysisText, nil
+	}
+
+	return "", analysis, nil
 }
 
 // Close closes the Gemini client.

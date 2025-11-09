@@ -89,10 +89,12 @@ func (s *TelegramService) SendPhoto(chatID, photoURL, sourceName, caption string
 			fullCaption = caption + fmt.Sprintf("\n\n%s", identifier)
 		}
 	}
-	if len(fullCaption) > MaxTelegramCaptionLength {
-		fullCaption = fullCaption[:MaxTelegramCaptionLength-3] + "..."
+	log.Printf("fullcaption: %s", fullCaption)
+	runes := []rune(fullCaption)
+	if len(runes) > MaxTelegramCaptionLength {
+		fullCaption = string(runes[:MaxTelegramCaptionLength-3]) + "..."
 	}
-
+	log.Printf("fullcaption: %s", fullCaption)
 	// Prepare the request body as JSON
 	requestBody, err := json.Marshal(map[string]string{
 		"chat_id":    chatID,
