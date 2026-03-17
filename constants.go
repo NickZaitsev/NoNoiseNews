@@ -8,7 +8,7 @@ import (
 const (
 	// Timeouts
 	DefaultHTTPTimeout = 30 * time.Second
-	APITimeout         = 60 * time.Second
+	DefaultAPITimeout  = 60 * time.Second
 
 	// Retry mechanism
 	DefaultRetryAttempts = 3
@@ -27,14 +27,19 @@ const (
 
 // User agent and headers for HTTP requests
 const (
-	UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
-	Accept    = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9"
+	UserAgent  = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
+	Accept     = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9"
 	AcceptLang = "en-US,en;q=0.9"
 )
 
 // Gemini API constants
 const (
-	GeminiModel = "gemini-2.5-pro"
+	GeminiModel                 = "gemini-2.5-flash"
+	DefaultGeminiItemCharLimit  = 1400
+	DefaultGeminiTotalCharLimit = 9000
+	MinimumGeminiItemCharLimit  = 500
+	MinimumGeminiTotalCharLimit = 2500
+	GeminiLimitShrinkPercent    = 70
 )
 
 // Russian date parsing constants
@@ -51,6 +56,6 @@ var RussianDayReplacer = map[string]string{
 
 // News source configurations
 const (
-	SVTVSourceName  = "SVTV"
+	SVTVSourceName   = "SVTV"
 	MeduzaSourceName = "Meduza"
 )

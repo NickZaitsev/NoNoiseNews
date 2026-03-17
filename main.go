@@ -87,7 +87,7 @@ func sendNotifications(telegramService *TelegramService, adminChatID, analysis, 
 		}
 	} else {
 		fmt.Printf("No significant news to report from %s.\n", sourceName)
-		telegramService.SendMessage(adminChatID, sourceName, fmt.Sprintf("No significant news to report from %s.", sourceName))
+		notifyAdmin(telegramService, adminChatID, sourceName, fmt.Sprintf("No significant news to report from %s.", sourceName))
 	}
 }
 
@@ -98,7 +98,7 @@ func sendToChannel(telegramService *TelegramService, adminChatID, message, photo
 		err = telegramService.SendPhoto(channelID, photoURL, sourceName, message)
 		if err != nil {
 			LogError("Failed to send photo, falling back to text message", err, "channel_id", channelID, "photo_url", photoURL)
-			telegramService.SendMessage(adminChatID, sourceName, fmt.Sprintf("Failed to send photo from %s to %s. Error: %v. Falling back to text.", sourceName, channelID, err))
+			notifyAdmin(telegramService, adminChatID, sourceName, fmt.Sprintf("Failed to send photo from %s to %s. Error: %v. Falling back to text.", sourceName, channelID, err))
 			// Fallback to sending the original full message as text
 			err = telegramService.SendMessage(channelID, sourceName, message)
 		}
@@ -108,14 +108,20 @@ func sendToChannel(telegramService *TelegramService, adminChatID, message, photo
 
 	if err != nil {
 		LogError("Failed to send final message to Telegram channel", err, "channel_id", channelID, "source", sourceName)
-		telegramService.SendMessage(adminChatID, sourceName, fmt.Sprintf("Failed to send news from %s to %s: %v", sourceName, channelID, err))
+		notifyAdmin(telegramService, adminChatID, sourceName, fmt.Sprintf("Failed to send news from %s to %s: %v", sourceName, channelID, err))
 	} else {
 		notification := fmt.Sprintf("News posted to %s from %s", channelID, sourceName)
 		if photoURL != "" {
 			notification += " (with photo)"
 		}
 		LogInfo("News posted successfully", "channel_id", channelID, "source", sourceName)
-		telegramService.SendMessage(adminChatID, sourceName, notification)
+		notifyAdmin(telegramService, adminChatID, sourceName, notification)
+	}
+}
+
+func notifyAdmin(telegramService *TelegramService, adminChatID, sourceName, message string) {
+	if err := telegramService.SendMessage(adminChatID, sourceName, message); err != nil {
+		LogError("Failed to send admin notification", err, "chat_id", adminChatID, "source", sourceName)
 	}
 }
 
@@ -123,51 +129,51 @@ func sendToChannel(telegramService *TelegramService, adminChatID, message, photo
 func handleError(telegramService *TelegramService, adminChatID, sourceName string, err error, operation string) {
 	LogError("Operation failed", err, "operation", operation, "source", sourceName)
 	errorMsg := fmt.Sprintf("Error %s from %s: %v", operation, sourceName, err)
-	telegramService.SendMessage(adminChatID, sourceName, errorMsg)
+	notifyAdmin(telegramService, adminChatID, sourceName, errorMsg)
 }
 
 // handleNoNews handles the case when no news items are found.
 func handleNoNews(telegramService *TelegramService, adminChatID, sourceName string) {
 	fmt.Printf("No new items from %s.\n", sourceName)
-	telegramService.SendMessage(adminChatID, sourceName, fmt.Sprintf("No new items from %s.", sourceName))
+	notifyAdmin(telegramService, adminChatID, sourceName, fmt.Sprintf("No new items from %s.", sourceName))
 }
 
 func main() {
 	// Initialize structured logging
 	initLogger()
 	LogInfo("Starting NoNoise news fetcher", "version", "1.0.0")
-	
+
 	config, err := LoadConfig()
 	if err != nil {
 		LogError("Failed to load configuration", err)
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
-	
-	geminiService := NewGeminiService(config.GeminiAPIKey, config.GeminiPrompt)
+
+	geminiService := NewGeminiService(config.GeminiAPIKey, config.GeminiPrompt, config.GeminiModel, config.APITimeout)
 	defer geminiService.Close()
 	telegramService := NewTelegramService(config.TelegramAPIKey, config.TargetChannels)
 
 	// Process each news source from configuration
 	for sourceName, sourceURL := range config.NewsSources {
 		var fetcherObj fetcher.Fetcher
-		
+
 		// Create appropriate fetcher based on source
 		if sourceName == SVTVSourceName {
 			fetcherObj = &fetcher.SvtvFetcher{URL: sourceURL}
 		} else {
 			fetcherObj = &fetcher.GenericFetcher{URL: sourceURL}
 		}
-		
+
 		// Get the target channel for this source
 		targetChannel, exists := config.TargetChannels[sourceName]
 		if !exists {
 			LogError("No target channel configured for source", nil, "source", sourceName)
 			continue
 		}
-		
+
 		// Use the target channel for news, admin chat ID for notifications
 		channelIDs := []string{targetChannel}
-		
+
 		processNewsSource(
 			fetcherObj,
 			geminiService,
@@ -177,6 +183,6 @@ func main() {
 			channelIDs,
 		)
 	}
-	
+
 	LogInfo("News fetching completed for all sources")
 }

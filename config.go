@@ -14,6 +14,7 @@ import (
 // Config holds the application's configuration.
 type Config struct {
 	GeminiAPIKey        string
+	GeminiModel         string
 	TelegramAPIKey      string
 	TelegramChatID      string
 	GeminiPrompt        string
@@ -21,7 +22,7 @@ type Config struct {
 	TargetChannels      map[string]string
 	ContentPreviewLimit int
 	MaxMessageLength    int
-	APITimeout          int
+	APITimeout          time.Duration
 	RetryAttempts       int
 	RetryDelay          time.Duration
 }
@@ -35,14 +36,18 @@ func LoadConfig() (*Config, error) {
 
 	// Load required API keys
 	geminiAPIKey := getEnv("GEMINI_API_KEY", true)
+	geminiModel := getEnv("GEMINI_MODEL", false)
 	telegramAPIKey := getEnv("TELEGRAM_API_KEY", true)
 	telegramChatID := getEnv("TELEGRAM_CHAT_ID", true)
 	geminiPrompt := getEnv("GEMINI_PROMPT", true)
+	if geminiModel == "" {
+		geminiModel = GeminiModel
+	}
 
 	// Load optional settings with defaults
 	contentPreviewLimit := getEnvAsInt("CONTENT_PREVIEW_LIMIT", ContentPreviewLimit)
 	maxMessageLength := getEnvAsInt("MAX_MESSAGE_LENGTH", MaxMessageLength)
-	apiTimeout := getEnvAsInt("API_TIMEOUT", int(DefaultHTTPTimeout/time.Second))
+	apiTimeout := getEnvAsInt("API_TIMEOUT", int(DefaultAPITimeout/time.Second))
 	retryAttempts := getEnvAsInt("RETRY_ATTEMPTS", DefaultRetryAttempts)
 	retryDelay := getEnvAsInt("RETRY_DELAY", int(DefaultRetryDelay/time.Second))
 
@@ -56,6 +61,7 @@ func LoadConfig() (*Config, error) {
 
 	return &Config{
 		GeminiAPIKey:        geminiAPIKey,
+		GeminiModel:         geminiModel,
 		TelegramAPIKey:      telegramAPIKey,
 		TelegramChatID:      telegramChatID,
 		GeminiPrompt:        geminiPrompt,
@@ -63,7 +69,7 @@ func LoadConfig() (*Config, error) {
 		TargetChannels:      targetChannels,
 		ContentPreviewLimit: contentPreviewLimit,
 		MaxMessageLength:    maxMessageLength,
-		APITimeout:          apiTimeout,
+		APITimeout:          time.Duration(apiTimeout) * time.Second,
 		RetryAttempts:       retryAttempts,
 		RetryDelay:          time.Duration(retryDelay) * time.Second,
 	}, nil
@@ -96,10 +102,10 @@ func getEnvAsInt(key string, defaultValue int) int {
 // parseNewsSources parses the NEWS_SOURCES environment variable.
 func parseNewsSources(newsSourcesEnv string) map[string]string {
 	sources := make(map[string]string)
-	
+
 	// Expected format: "name1:url1,name2:url2,name3:url3"
 	pairs := strings.Split(newsSourcesEnv, ",")
-	
+
 	for _, pair := range pairs {
 		parts := strings.SplitN(pair, ":", 2)
 		if len(parts) == 2 {
@@ -110,21 +116,21 @@ func parseNewsSources(newsSourcesEnv string) map[string]string {
 			}
 		}
 	}
-	
+
 	if len(sources) == 0 {
 		log.Fatal("No valid news sources found in NEWS_SOURCES environment variable")
 	}
-	
+
 	return sources
 }
 
 // parseTargetChannels parses the TARGET_CHANNELS environment variable.
 func parseTargetChannels(targetChannelsEnv string) map[string]string {
 	channels := make(map[string]string)
-	
+
 	// Expected format: "SourceName:ChannelID,SourceName2:ChannelID2"
 	pairs := strings.Split(targetChannelsEnv, ",")
-	
+
 	for _, pair := range pairs {
 		parts := strings.SplitN(pair, ":", 2)
 		if len(parts) == 2 {
@@ -135,10 +141,10 @@ func parseTargetChannels(targetChannelsEnv string) map[string]string {
 			}
 		}
 	}
-	
+
 	if len(channels) == 0 {
 		log.Fatal("No valid target channels found in TARGET_CHANNELS environment variable")
 	}
-	
+
 	return channels
 }

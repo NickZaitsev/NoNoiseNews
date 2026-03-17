@@ -117,6 +117,7 @@ The application will:
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `GEMINI_API_KEY` | Google Gemini API key | `AIzaSy...` |
+| `GEMINI_MODEL` | Gemini model to use | `gemini-2.5-flash` |
 | `TELEGRAM_API_KEY` | Telegram bot API key | `1234567890:ABC...` |
 | `TELEGRAM_CHAT_ID` | Admin chat ID for notifications | `-1001234567890` |
 | `NEWS_SOURCES` | News sources configuration | `SVTV:https://svtv.org/feed/rss/` |
