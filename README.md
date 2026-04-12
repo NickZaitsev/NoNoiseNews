@@ -113,7 +113,9 @@ The application will:
 4. Analyze content using Gemini AI
 5. Send significant news to configured Telegram channels
 6. Store final sent posts in SQLite and skip recent duplicates
-7. Provide structured logging output
+7. Link sent posts to the source articles they were built from
+8. Store per-source run audit records with final status and errors
+9. Provide structured logging output
 
 ## Configuration
 
