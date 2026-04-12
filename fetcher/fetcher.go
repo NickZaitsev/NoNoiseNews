@@ -12,6 +12,13 @@ import (
 	"news/utils"
 )
 
+const (
+	defaultHTTPTimeout = 30 * time.Second
+	userAgentHeader    = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
+	acceptHeader       = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9"
+	acceptLangHeader   = "en-US,en;q=0.9"
+)
+
 // NewsItem represents a single news article.
 type NewsItem struct {
 	Title       string
@@ -65,7 +72,7 @@ func extractImageURL(item *gofeed.Item) string {
 // createHTTPRequest creates a standardized HTTP client and request for RSS fetching.
 func createHTTPRequest(url string) (*http.Client, *http.Request, error) {
 	client := &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout: defaultHTTPTimeout,
 	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -73,13 +80,9 @@ func createHTTPRequest(url string) (*http.Client, *http.Request, error) {
 	}
 
 	// Set browser-like headers to avoid being blocked.
-	userAgent := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
-	accept := "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9"
-	acceptLang := "en-US,en;q=0.9"
-
-	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("Accept", accept)
-	req.Header.Set("Accept-Language", acceptLang)
+	req.Header.Set("User-Agent", userAgentHeader)
+	req.Header.Set("Accept", acceptHeader)
+	req.Header.Set("Accept-Language", acceptLangHeader)
 
 	return client, req, nil
 }
@@ -87,7 +90,7 @@ func createHTTPRequest(url string) (*http.Client, *http.Request, error) {
 // newFeedParser creates a new gofeed.Parser with a custom User-Agent.
 func newFeedParser() *gofeed.Parser {
 	fp := gofeed.NewParser()
-	fp.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
+	fp.UserAgent = userAgentHeader
 	return fp
 }
 

@@ -14,6 +14,7 @@ func processNewsSource(
 	fetcher fetcher.Fetcher,
 	geminiService *GeminiService,
 	telegramService *TelegramService,
+	storage *Storage,
 	config *Config,
 	sourceName string,
 	targetChannelIDs []string,
@@ -27,6 +28,11 @@ func processNewsSource(
 
 	// Step 2: Display content preview
 	displayContentPreview(items, sourceName)
+
+	if err := storage.SaveArticles(sourceName, items); err != nil {
+		handleError(telegramService, config.TelegramChatID, sourceName, err, "saving_articles")
+		return
+	}
 
 	// Step 3: Check if we have any items
 	if len(items) == 0 {
@@ -42,7 +48,7 @@ func processNewsSource(
 	}
 
 	// Step 5: Send notifications
-	sendNotifications(telegramService, config.TelegramChatID, analysis, geminiImageURL, items, targetChannelIDs, sourceName)
+	sendNotifications(telegramService, storage, config, analysis, geminiImageURL, items, targetChannelIDs, sourceName)
 }
 
 // fetchNews retrieves news items from the given fetcher.
@@ -69,8 +75,9 @@ func analyzeNews(geminiService *GeminiService, items []fetcher.NewsItem, _ strin
 }
 
 // sendNotifications sends the analysis to the specified Telegram channels.
-func sendNotifications(telegramService *TelegramService, adminChatID, analysis, geminiImageURL string, items []fetcher.NewsItem, targetChannelIDs []string, sourceName string) {
-	if analysis != "" && len(analysis) >= 34 {
+func sendNotifications(telegramService *TelegramService, storage *Storage, config *Config, analysis, geminiImageURL string, items []fetcher.NewsItem, targetChannelIDs []string, sourceName string) {
+	adminChatID := config.TelegramChatID
+	if analysis != "" && len(strings.TrimSpace(analysis)) >= 34 {
 		fmt.Println(analysis)
 		sanitizedAnalysis := strings.ReplaceAll(analysis, TelegramMarkdownEscape, "\\*\\*\\*")
 
@@ -82,8 +89,19 @@ func sendNotifications(telegramService *TelegramService, adminChatID, analysis, 
 			bestImageURL = items[0].ImageURL
 		}
 
+		duplicateWindow := time.Duration(config.DuplicateWindowHours) * time.Hour
 		for _, channelID := range targetChannelIDs {
-			sendToChannel(telegramService, adminChatID, sanitizedAnalysis, bestImageURL, channelID, sourceName)
+			alreadySent, err := storage.HasSentRecently(sourceName, sanitizedAnalysis, duplicateWindow)
+			if err != nil {
+				handleError(telegramService, adminChatID, sourceName, err, "checking_duplicate_post")
+				continue
+			}
+			if alreadySent {
+				LogInfo("Skipping duplicate post", "source", sourceName, "channel_id", channelID)
+				notifyAdmin(telegramService, adminChatID, sourceName, fmt.Sprintf("Skipped duplicate post for %s to %s", sourceName, channelID))
+				continue
+			}
+			sendToChannel(telegramService, storage, adminChatID, sanitizedAnalysis, bestImageURL, channelID, sourceName)
 		}
 	} else {
 		fmt.Printf("No significant news to report from %s.\n", sourceName)
@@ -92,7 +110,7 @@ func sendNotifications(telegramService *TelegramService, adminChatID, analysis, 
 }
 
 // sendToChannel handles sending the news analysis to the appropriate channel.
-func sendToChannel(telegramService *TelegramService, adminChatID, message, photoURL, channelID, sourceName string) {
+func sendToChannel(telegramService *TelegramService, storage *Storage, adminChatID, message, photoURL, channelID, sourceName string) {
 	var err error
 	if photoURL != "" {
 		err = telegramService.SendPhoto(channelID, photoURL, sourceName, message)
@@ -110,6 +128,10 @@ func sendToChannel(telegramService *TelegramService, adminChatID, message, photo
 		LogError("Failed to send final message to Telegram channel", err, "channel_id", channelID, "source", sourceName)
 		notifyAdmin(telegramService, adminChatID, sourceName, fmt.Sprintf("Failed to send news from %s to %s: %v", sourceName, channelID, err))
 	} else {
+		if err := storage.SavePost(PostRecord{SourceName: sourceName, TargetChannelID: channelID, MessageText: message, ImageURL: photoURL, SentAt: time.Now()}); err != nil {
+			LogError("Failed to persist sent post", err, "channel_id", channelID, "source", sourceName)
+			notifyAdmin(telegramService, adminChatID, sourceName, fmt.Sprintf("Posted to %s from %s, but failed to save post record: %v", channelID, sourceName, err))
+		}
 		notification := fmt.Sprintf("News posted to %s from %s", channelID, sourceName)
 		if photoURL != "" {
 			notification += " (with photo)"
@@ -149,6 +171,13 @@ func main() {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
 
+	storage, err := NewStorage(config.DatabasePath)
+	if err != nil {
+		LogError("Failed to initialize storage", err, "database_path", config.DatabasePath)
+		log.Fatalf("Failed to initialize storage: %v", err)
+	}
+	defer storage.Close()
+
 	geminiService := NewGeminiService(config.GeminiAPIKey, config.GeminiPrompt, config.GeminiModel, config.APITimeout)
 	defer geminiService.Close()
 	telegramService := NewTelegramService(config.TelegramAPIKey, config.TargetChannels)
@@ -178,6 +207,7 @@ func main() {
 			fetcherObj,
 			geminiService,
 			telegramService,
+			storage,
 			config,
 			sourceName,
 			channelIDs,

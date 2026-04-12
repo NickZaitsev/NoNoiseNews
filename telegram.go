@@ -12,42 +12,23 @@ import (
 
 // TelegramService handles sending messages to a Telegram bot.
 type TelegramService struct {
-	apiKey         string
-	targetChannels map[string]string
+	apiKey string
 }
 
 // NewTelegramService creates a new TelegramService.
-func NewTelegramService(apiKey string, targetChannels map[string]string) *TelegramService {
-	return &TelegramService{
-		apiKey:         apiKey,
-		targetChannels: targetChannels,
-	}
+func NewTelegramService(apiKey string, _ map[string]string) *TelegramService {
+	return &TelegramService{apiKey: apiKey}
 }
 
 // SendMessage sends a message to the specified Telegram chat.
 func (s *TelegramService) SendMessage(chatID, sourceName, message string) error {
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", s.apiKey)
 
-	messageToSend := message
-
-	// Check if the chatID is a target channel and append the identifier if so
-	isTargetChannel := false
-	for _, channel := range s.targetChannels {
-		if channel == chatID {
-			isTargetChannel = true
-			break
-		}
-	}
-
-	if isTargetChannel {
-		if identifier, ok := s.targetChannels[sourceName]; ok {
-			messageToSend = message + fmt.Sprintf("\n\n%s", identifier)
-		}
-	}
+	_ = sourceName
 
 	requestBody, err := json.Marshal(map[string]string{
 		"chat_id":    chatID,
-		"text":       messageToSend,
+		"text":       message,
 		"parse_mode": "HTML",
 	})
 	if err != nil {
@@ -76,20 +57,7 @@ func (s *TelegramService) SendPhoto(chatID, photoURL, sourceName, caption string
 
 	fullCaption := caption
 
-	// Check if the chatID is a target channel and append the identifier if so
-	isTargetChannel := false
-	for _, channel := range s.targetChannels {
-		if channel == chatID {
-			isTargetChannel = true
-			break
-		}
-	}
-
-	if isTargetChannel {
-		if identifier, ok := s.targetChannels[sourceName]; ok {
-			fullCaption = caption + fmt.Sprintf("\n\n%s", identifier)
-		}
-	}
+	_ = sourceName
 	// log.Printf("Caption sent to telegram: %s", fullCaption)
 	runes := []rune(fullCaption)
 	if len(runes) > MaxTelegramCaptionLength {

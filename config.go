@@ -13,18 +13,20 @@ import (
 
 // Config holds the application's configuration.
 type Config struct {
-	GeminiAPIKey        string
-	GeminiModel         string
-	TelegramAPIKey      string
-	TelegramChatID      string
-	GeminiPrompt        string
-	NewsSources         map[string]string
-	TargetChannels      map[string]string
-	ContentPreviewLimit int
-	MaxMessageLength    int
-	APITimeout          time.Duration
-	RetryAttempts       int
-	RetryDelay          time.Duration
+	GeminiAPIKey         string
+	GeminiModel          string
+	TelegramAPIKey       string
+	TelegramChatID       string
+	GeminiPrompt         string
+	NewsSources          map[string]string
+	TargetChannels       map[string]string
+	ContentPreviewLimit  int
+	MaxMessageLength     int
+	APITimeout           time.Duration
+	RetryAttempts        int
+	RetryDelay           time.Duration
+	DatabasePath         string
+	DuplicateWindowHours int
 }
 
 // LoadConfig loads the configuration from a .env file.
@@ -59,19 +61,27 @@ func LoadConfig() (*Config, error) {
 	targetChannelsEnv := getEnv("TARGET_CHANNELS", true)
 	targetChannels := parseTargetChannels(targetChannelsEnv)
 
+	databasePath := getEnv("DATABASE_PATH", false)
+	if databasePath == "" {
+		databasePath = DefaultDatabasePath
+	}
+	duplicateWindowHours := getEnvAsInt("DUPLICATE_WINDOW_HOURS", DefaultDuplicateWindowHours)
+
 	return &Config{
-		GeminiAPIKey:        geminiAPIKey,
-		GeminiModel:         geminiModel,
-		TelegramAPIKey:      telegramAPIKey,
-		TelegramChatID:      telegramChatID,
-		GeminiPrompt:        geminiPrompt,
-		NewsSources:         newsSources,
-		TargetChannels:      targetChannels,
-		ContentPreviewLimit: contentPreviewLimit,
-		MaxMessageLength:    maxMessageLength,
-		APITimeout:          time.Duration(apiTimeout) * time.Second,
-		RetryAttempts:       retryAttempts,
-		RetryDelay:          time.Duration(retryDelay) * time.Second,
+		GeminiAPIKey:         geminiAPIKey,
+		GeminiModel:          geminiModel,
+		TelegramAPIKey:       telegramAPIKey,
+		TelegramChatID:       telegramChatID,
+		GeminiPrompt:         geminiPrompt,
+		NewsSources:          newsSources,
+		TargetChannels:       targetChannels,
+		ContentPreviewLimit:  contentPreviewLimit,
+		MaxMessageLength:     maxMessageLength,
+		APITimeout:           time.Duration(apiTimeout) * time.Second,
+		RetryAttempts:        retryAttempts,
+		RetryDelay:           time.Duration(retryDelay) * time.Second,
+		DatabasePath:         databasePath,
+		DuplicateWindowHours: duplicateWindowHours,
 	}, nil
 }
 

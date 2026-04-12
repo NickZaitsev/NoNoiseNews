@@ -18,6 +18,8 @@ Configuration (.env)
        ↓
    gemini.go (AI analysis)
        ↓
+  storage.go (SQLite audit trail)
+       ↓
  telegram.go (notifications)
        ↓
    Console & Telegram Channels
@@ -33,6 +35,7 @@ Configuration (.env)
   - **`SvtvFetcher`**: Custom parser for non-standard feed formats
 - **`gemini.go`**: Google Gemini AI integration for news analysis
 - **`telegram.go`**: Telegram bot API integration
+- **`storage.go`**: SQLite persistence for fetched articles and sent posts
 - **`logger.go`**: Structured logging system
 - **`constants.go`**: Application constants and configuration defaults
 
@@ -106,9 +109,11 @@ go build -o nonoise .
 The application will:
 1. Load configuration from `.env`
 2. Fetch news from configured RSS sources
-3. Analyze content using Gemini AI
-4. Send significant news to configured Telegram channels
-5. Provide structured logging output
+3. Store fetched articles in SQLite
+4. Analyze content using Gemini AI
+5. Send significant news to configured Telegram channels
+6. Store final sent posts in SQLite and skip recent duplicates
+7. Provide structured logging output
 
 ## Configuration
 
@@ -121,6 +126,7 @@ The application will:
 | `TELEGRAM_API_KEY` | Telegram bot API key | `1234567890:ABC...` |
 | `TELEGRAM_CHAT_ID` | Admin chat ID for notifications | `-1001234567890` |
 | `NEWS_SOURCES` | News sources configuration | `SVTV:https://svtv.org/feed/rss/` |
+| `TARGET_CHANNELS` | Source to Telegram channel mapping | `SVTV:@channelname` |
 
 ### Optional Configuration
 
@@ -129,6 +135,8 @@ The application will:
 | `CONTENT_PREVIEW_LIMIT` | Content preview characters | `1000` |
 | `MAX_MESSAGE_LENGTH` | Telegram message limit | `4000` |
 | `API_TIMEOUT` | HTTP request timeout (seconds) | `30` |
+| `DATABASE_PATH` | SQLite database path | `nonoise.db` |
+| `DUPLICATE_WINDOW_HOURS` | Skip identical recent posts from same source | `24` |
 
 ### Adding New News Sources
 

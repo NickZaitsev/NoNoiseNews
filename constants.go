@@ -18,6 +18,10 @@ const (
 	ContentPreviewLimit = 1000
 	MaxMessageLength    = 4000
 
+	// Storage
+	DefaultDatabasePath         = "nonoise.db"
+	DefaultDuplicateWindowHours = 24
+
 	// Telegram constants
 	TelegramMarkdownEscape   = "***"
 	MaxTelegramCaptionLength = 1024
