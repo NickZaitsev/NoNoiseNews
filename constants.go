@@ -11,8 +11,11 @@ const (
 	DefaultAPITimeout  = 60 * time.Second
 
 	// Retry mechanism
-	DefaultRetryAttempts = 3
-	DefaultRetryDelay    = 2 * time.Second
+	DefaultRetryAttempts           = 3
+	DefaultRetryDelay              = 2 * time.Second
+	DefaultGeminiRetryAttempts     = 4
+	DefaultGeminiRateLimitAttempts = 6
+	MaxGeminiRetryDelay            = 2 * time.Minute
 
 	// Content limits
 	ContentPreviewLimit = 1000

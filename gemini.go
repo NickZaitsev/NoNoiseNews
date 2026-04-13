@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"net/http"
 	"regexp"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"news/fetcher"
 
 	"github.com/google/generative-ai-go/genai"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
 )
 
@@ -59,30 +61,50 @@ func (s *GeminiService) AnalyzeNews(items []fetcher.NewsItem, attempts int, dela
 
 	var analysis string
 	var err error
-	for attempt := 1; attempt <= attempts; attempt++ {
+	for attempt := 1; ; attempt++ {
 		fullPrompt := fmt.Sprintf(s.prompt, s.buildNewsContent(items, itemCharLimit, totalCharLimit))
 		analysis, err = s.generateContent(fullPrompt)
 		if err == nil {
 			break
 		}
 
-		if attempt == attempts {
+		if !isRetriableGeminiError(err) {
 			return "", "", err
 		}
 
-		waitFor := recommendedRetryDelay(err, delay)
-		if isRetriableGeminiError(err) {
+		maxAttempts := retryAttemptsForGeminiError(attempts, err)
+		if attempt >= maxAttempts {
+			return "", "", err
+		}
+
+		waitFor := recommendedRetryDelay(err, delay, attempt)
+		if shouldShrinkGeminiPayload(err) {
 			itemCharLimit, totalCharLimit = shrinkPromptLimits(itemCharLimit, totalCharLimit)
 			LogWarn(
 				"Gemini request failed, retrying with smaller payload",
 				"attempt", attempt,
+				"max_attempts", maxAttempts,
 				"wait_for", waitFor.String(),
 				"item_char_limit", itemCharLimit,
 				"total_char_limit", totalCharLimit,
 				"error", err,
 			)
+		} else if isRateLimitError(err) {
+			LogWarn(
+				"Gemini rate limited, retrying after backoff",
+				"attempt", attempt,
+				"max_attempts", maxAttempts,
+				"wait_for", waitFor.String(),
+				"error", err,
+			)
 		} else {
-			LogWarn("Gemini request failed, retrying", "attempt", attempt, "wait_for", waitFor.String(), "error", err)
+			LogWarn(
+				"Gemini request failed, retrying",
+				"attempt", attempt,
+				"max_attempts", maxAttempts,
+				"wait_for", waitFor.String(),
+				"error", err,
+			)
 		}
 
 		time.Sleep(waitFor)
@@ -186,7 +208,11 @@ func shrinkPromptLimits(itemCharLimit, totalCharLimit int) (int, int) {
 }
 
 func isRetriableGeminiError(err error) bool {
-	return isDeadlineError(err) || isRateLimitError(err)
+	return isDeadlineError(err) || isRateLimitError(err) || isTransientGoogleAPIError(err)
+}
+
+func shouldShrinkGeminiPayload(err error) bool {
+	return isDeadlineError(err)
 }
 
 func isDeadlineError(err error) bool {
@@ -198,30 +224,124 @@ func isDeadlineError(err error) bool {
 }
 
 func isRateLimitError(err error) bool {
+	var apiErr *googleapi.Error
+	if errors.As(err, &apiErr) && apiErr.Code == http.StatusTooManyRequests {
+		return true
+	}
+
 	lowerErr := strings.ToLower(err.Error())
 	return strings.Contains(lowerErr, "error 429") ||
 		strings.Contains(lowerErr, "quota exceeded") ||
 		strings.Contains(lowerErr, "rate limit")
 }
 
-var retryAfterPattern = regexp.MustCompile(`(?i)please retry in ([0-9]+(?:\.[0-9]+)?)s`)
+func isTransientGoogleAPIError(err error) bool {
+	var apiErr *googleapi.Error
+	if errors.As(err, &apiErr) {
+		return apiErr.Code == http.StatusInternalServerError ||
+			apiErr.Code == http.StatusBadGateway ||
+			apiErr.Code == http.StatusServiceUnavailable ||
+			apiErr.Code == http.StatusGatewayTimeout
+	}
 
-func recommendedRetryDelay(err error, fallback time.Duration) time.Duration {
+	lowerErr := strings.ToLower(err.Error())
+	return strings.Contains(lowerErr, "error 500") ||
+		strings.Contains(lowerErr, "error 502") ||
+		strings.Contains(lowerErr, "error 503") ||
+		strings.Contains(lowerErr, "error 504")
+}
+
+func retryAttemptsForGeminiError(baseAttempts int, err error) int {
+	if baseAttempts < 1 {
+		baseAttempts = 1
+	}
+
+	if isRateLimitError(err) {
+		return max(baseAttempts, DefaultGeminiRateLimitAttempts)
+	}
+
+	if isRetriableGeminiError(err) {
+		return max(baseAttempts, DefaultGeminiRetryAttempts)
+	}
+
+	return baseAttempts
+}
+
+var retryAfterPattern = regexp.MustCompile(`(?i)retry in ([0-9]+(?:\.[0-9]+)?)s`)
+
+func recommendedRetryDelay(err error, fallback time.Duration, attempt int) time.Duration {
 	if fallback <= 0 {
 		fallback = DefaultRetryDelay
 	}
 
+	if delay, ok := retryAfterHeaderDelay(err); ok {
+		return clampRetryDelay(delay)
+	}
+
 	if matches := retryAfterPattern.FindStringSubmatch(err.Error()); len(matches) == 2 {
 		if seconds, parseErr := time.ParseDuration(matches[1] + "s"); parseErr == nil {
-			return time.Duration(math.Ceil(seconds.Seconds()+1)) * time.Second
+			return clampRetryDelay(time.Duration(math.Ceil(seconds.Seconds()+1)) * time.Second)
 		}
 	}
 
-	if isDeadlineError(err) {
-		return fallback * 2
+	if attempt < 1 {
+		attempt = 1
 	}
 
-	return fallback
+	backoff := fallback * time.Duration(1<<(attempt-1))
+	if isDeadlineError(err) {
+		return clampRetryDelay(backoff)
+	}
+
+	if isRateLimitError(err) {
+		return clampRetryDelay(maxDuration(5*time.Second, backoff))
+	}
+
+	if isTransientGoogleAPIError(err) {
+		return clampRetryDelay(backoff)
+	}
+
+	return clampRetryDelay(fallback)
+}
+
+func retryAfterHeaderDelay(err error) (time.Duration, bool) {
+	var apiErr *googleapi.Error
+	if !errors.As(err, &apiErr) || apiErr.Header == nil {
+		return 0, false
+	}
+
+	retryAfter := strings.TrimSpace(apiErr.Header.Get("Retry-After"))
+	if retryAfter == "" {
+		return 0, false
+	}
+
+	if seconds, convErr := time.ParseDuration(retryAfter + "s"); convErr == nil {
+		return seconds, true
+	}
+
+	retryTime, parseErr := http.ParseTime(retryAfter)
+	if parseErr != nil {
+		return 0, false
+	}
+
+	return time.Until(retryTime), true
+}
+
+func clampRetryDelay(delay time.Duration) time.Duration {
+	if delay < time.Second {
+		delay = time.Second
+	}
+	if delay > MaxGeminiRetryDelay {
+		return MaxGeminiRetryDelay
+	}
+	return delay
+}
+
+func maxDuration(a, b time.Duration) time.Duration {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // Close closes the Gemini client.
