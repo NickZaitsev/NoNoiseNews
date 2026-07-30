@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net/http"
@@ -12,12 +13,26 @@ import (
 
 // TelegramService handles sending messages to a Telegram bot.
 type TelegramService struct {
-	apiKey string
+	apiKey     string
+	httpClient *http.Client
+	maxMsgLen  int
 }
 
 // NewTelegramService creates a new TelegramService.
-func NewTelegramService(apiKey string, _ map[string]string) *TelegramService {
-	return &TelegramService{apiKey: apiKey}
+func NewTelegramService(apiKey string, _ map[string]string, timeout time.Duration, maxMessageLength int) *TelegramService {
+	if timeout <= 0 {
+		timeout = DefaultAPITimeout
+	}
+	if maxMessageLength <= 0 {
+		maxMessageLength = MaxMessageLength
+	}
+	return &TelegramService{
+		apiKey: apiKey,
+		httpClient: &http.Client{
+			Timeout: timeout,
+		},
+		maxMsgLen: maxMessageLength,
+	}
 }
 
 // SendMessage sends a message to the specified Telegram chat.
@@ -25,6 +40,7 @@ func (s *TelegramService) SendMessage(chatID, sourceName, message string) error 
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", s.apiKey)
 
 	_ = sourceName
+	message = prepareTelegramHTMLText(message, s.maxMsgLen)
 
 	requestBody, err := json.Marshal(map[string]string{
 		"chat_id":    chatID,
@@ -35,7 +51,7 @@ func (s *TelegramService) SendMessage(chatID, sourceName, message string) error 
 		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(requestBody))
+	resp, err := s.httpClient.Post(url, "application/json", bytes.NewBuffer(requestBody))
 	if err != nil {
 		return fmt.Errorf("failed to send message: %w", err)
 	}
@@ -55,14 +71,9 @@ func (s *TelegramService) SendMessage(chatID, sourceName, message string) error 
 func (s *TelegramService) SendPhoto(chatID, photoURL, sourceName, caption string) error {
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendPhoto", s.apiKey)
 
-	fullCaption := caption
+	fullCaption := prepareTelegramHTMLText(caption, MaxTelegramCaptionLength)
 
 	_ = sourceName
-	// log.Printf("Caption sent to telegram: %s", fullCaption)
-	runes := []rune(fullCaption)
-	if len(runes) > MaxTelegramCaptionLength {
-		fullCaption = string(runes[:MaxTelegramCaptionLength-3]) + "..."
-	}
 	// Prepare the request body as JSON
 	requestBody, err := json.Marshal(map[string]string{
 		"chat_id":    chatID,
@@ -76,7 +87,7 @@ func (s *TelegramService) SendPhoto(chatID, photoURL, sourceName, caption string
 
 	var lastErr error
 	for i := 0; i < MaxPhotoRetries; i++ {
-		resp, err := http.Post(url, "application/json", bytes.NewBuffer(requestBody))
+		resp, err := s.httpClient.Post(url, "application/json", bytes.NewBuffer(requestBody))
 		if err != nil {
 			lastErr = fmt.Errorf("failed to send photo by URL: %w", err)
 			LogError("Failed to send photo", lastErr, "attempt", i+1)
@@ -110,4 +121,17 @@ func (s *TelegramService) SendPhoto(chatID, photoURL, sourceName, caption string
 
 	fallbackMessage := fmt.Sprintf("%s\n\n(Image: %s)", caption, photoURL)
 	return s.SendMessage(chatID, sourceName, fallbackMessage)
+}
+
+// prepareTelegramHTMLText escapes HTML special characters and truncates to limit.
+func prepareTelegramHTMLText(text string, limit int) string {
+	runes := []rune(text)
+	if limit > 0 && len(runes) > limit {
+		if limit <= 3 {
+			text = string(runes[:limit])
+		} else {
+			text = string(runes[:limit-3]) + "..."
+		}
+	}
+	return html.EscapeString(text)
 }

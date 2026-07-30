@@ -48,7 +48,7 @@ func processNewsSource(
 	}
 
 	// Step 2: Display content preview
-	displayContentPreview(items, sourceName)
+	displayContentPreview(items, config)
 
 	if err := storage.SaveArticles(sourceName, items); err != nil {
 		finishRun("storage_failed", err)
@@ -91,11 +91,16 @@ func fetchNews(fetcher fetcher.Fetcher, sourceName string, config *Config) ([]fe
 }
 
 // displayContentPreview shows a preview of the first news item's content.
-func displayContentPreview(items []fetcher.NewsItem, _ string) {
+func displayContentPreview(items []fetcher.NewsItem, config *Config) {
 	if len(items) > 0 && items[0].Content != "" {
 		contentPreview := items[0].Content
-		if len(contentPreview) > ContentPreviewLimit {
-			contentPreview = contentPreview[:ContentPreviewLimit]
+		limit := config.ContentPreviewLimit
+		if limit <= 0 {
+			limit = ContentPreviewLimit
+		}
+		runes := []rune(contentPreview)
+		if len(runes) > limit {
+			contentPreview = string(runes[:limit])
 		}
 		fmt.Printf("RSS Content Preview: %s\n", contentPreview)
 	}
@@ -223,7 +228,7 @@ func main() {
 
 	geminiService := NewGeminiService(config.GeminiAPIKey, config.GeminiPrompt, config.GeminiModel, config.APITimeout)
 	defer geminiService.Close()
-	telegramService := NewTelegramService(config.TelegramAPIKey, config.TargetChannels)
+	telegramService := NewTelegramService(config.TelegramAPIKey, config.TargetChannels, config.APITimeout, config.MaxMessageLength)
 
 	// Process each news source from configuration
 	for sourceName, sourceURL := range config.NewsSources {

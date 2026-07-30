@@ -80,4 +80,9 @@ temp/
 
 .env
 
+# Runtime SQLite database
+*.db
+nonoise.db
+
+# Local Windows build
 news.exe
